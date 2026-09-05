@@ -155,7 +155,7 @@ function TransformStudentsPage() {
       toast.success(t('students.transform.success', { count: result.count }))
       setRowSelection({})
       setConfirmOpen(false)
-      setTransformResult(result.items)
+      setTransformResult(result.items ? result.items : [])
     } catch (err) {
       toast.error(translateConvexError(err, t, 'students.transform.error'))
     } finally {
