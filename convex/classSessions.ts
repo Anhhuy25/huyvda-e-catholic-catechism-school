@@ -1,0 +1,700 @@
+import { v } from 'convex/values'
+import { mutation, query } from './_generated/server'
+import {
+  assertBoardMemberOrAdmin,
+  assertClassCatechistOrAbove,
+  assertValidCatechist,
+  getEffectivePermissions,
+  requireActiveAcademicYear,
+} from './lib/authz'
+import { findExistingParishSession } from './lib/classSessionHelpers'
+import { ATTENDANCE_ERRORS, CLASS_SESSION_ERRORS } from './lib/errors'
+import type { Id } from './_generated/dataModel'
+
+// ─── Queries ──────────────────────────────────────────────────────────────
+
+export const list = query({
+  args: {
+    requesterId: v.id('catechists'),
+    classYearId: v.optional(v.id('classYears')),
+    sessionType: v.optional(
+      v.union(
+        v.literal('mass'),
+        v.literal('catechism'),
+        v.literal('supplemental'),
+        v.literal('extracurricular'),
+      ),
+    ),
+    dateFrom: v.optional(v.string()),
+    dateTo: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await assertValidCatechist(ctx, args.requesterId)
+
+    let sessions = await ctx.db
+      .query('classSessions')
+      .withIndex('by_is_deleted', (q) => q.eq('isDeleted', false))
+      .collect()
+
+    if (args.classYearId) {
+      sessions = sessions.filter((s) => s.classYearId === args.classYearId)
+    }
+
+    if (args.sessionType) {
+      sessions = sessions.filter((s) => s.sessionType === args.sessionType)
+    }
+
+    const { dateFrom, dateTo } = args
+    if (dateFrom) {
+      sessions = sessions.filter((s) => s.sessionDate >= dateFrom)
+    }
+
+    if (dateTo) {
+      sessions = sessions.filter((s) => s.sessionDate <= dateTo)
+    }
+
+    return sessions
+  },
+})
+
+export const listMySessionsInRange = query({
+  args: {
+    requesterId: v.id('catechists'),
+    academicYearId: v.id('academicYears'),
+    dateFrom: v.string(),
+    dateTo: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await assertValidCatechist(ctx, args.requesterId)
+
+    const perms = await getEffectivePermissions(
+      ctx,
+      args.requesterId,
+      args.academicYearId,
+    )
+
+    const classYearIds = new Set<Id<'classYears'>>()
+
+    for (const classYearId of perms.classCatechistOf) {
+      const classYear = await ctx.db.get('classYears', classYearId)
+      if (
+        classYear &&
+        !classYear.isDeleted &&
+        classYear.academicYearId === args.academicYearId
+      ) {
+        classYearIds.add(classYearId)
+      }
+    }
+
+    if (perms.branchHeadOf.length > 0) {
+      const classYears = await ctx.db
+        .query('classYears')
+        .withIndex('by_academic_year_id', (q) =>
+          q.eq('academicYearId', args.academicYearId),
+        )
+        .collect()
+
+      for (const classYear of classYears.filter((cy) => !cy.isDeleted)) {
+        const classRecord = await ctx.db.get('classes', classYear.classId)
+        if (
+          classRecord &&
+          !classRecord.isDeleted &&
+          perms.branchHeadOf.includes(classRecord.branchId)
+        ) {
+          classYearIds.add(classYear._id)
+        }
+      }
+    }
+
+    const sessions = await ctx.db
+      .query('classSessions')
+      .withIndex('by_session_date', (q) =>
+        q.gte('sessionDate', args.dateFrom).lte('sessionDate', args.dateTo),
+      )
+      .collect()
+
+    const matching = sessions.filter(
+      (s) =>
+        !s.isDeleted &&
+        !s.isCancelled &&
+        (s.sessionType === 'catechism' || s.sessionType === 'supplemental') &&
+        s.classYearId !== undefined &&
+        classYearIds.has(s.classYearId),
+    )
+
+    type SessionRow = {
+      sessionId: Id<'classSessions'>
+      classId: Id<'classes'>
+      classYearId: Id<'classYears'>
+      className: string
+      sessionDate: string
+      sessionType: 'catechism' | 'supplemental'
+      studentCount: number
+      recordedCount: number
+    }
+
+    const uniqueClassYearIds = Array.from(
+      new Set(
+        matching
+          .map((s) => s.classYearId)
+          .filter((id): id is Id<'classYears'> => id !== undefined),
+      ),
+    )
+
+    const classYears = await Promise.all(
+      uniqueClassYearIds.map((id) => ctx.db.get('classYears', id)),
+    )
+    const classYearMap = new Map(
+      classYears
+        .filter(
+          (cy): cy is NonNullable<typeof cy> => cy !== null && !cy.isDeleted,
+        )
+        .map((cy) => [cy._id, cy]),
+    )
+
+    const uniqueClassIds = Array.from(
+      new Set(Array.from(classYearMap.values()).map((cy) => cy.classId)),
+    )
+    const classes = await Promise.all(
+      uniqueClassIds.map((id) => ctx.db.get('classes', id)),
+    )
+    const classMap = new Map(
+      classes
+        .filter((c): c is NonNullable<typeof c> => c !== null && !c.isDeleted)
+        .map((c) => [c._id, c]),
+    )
+
+    const studentCountsList = await Promise.all(
+      uniqueClassYearIds.map(async (cyId) => {
+        const scs = await ctx.db
+          .query('studentClasses')
+          .withIndex('by_class_year_id', (q) => q.eq('classYearId', cyId))
+          .collect()
+        const count = scs.filter((sc) => !sc.isDeleted).length
+        return [cyId, count] as const
+      }),
+    )
+    const studentCountMap = new Map(studentCountsList)
+
+    const attendanceCountsList = await Promise.all(
+      matching.map(async (session) => {
+        const records = await ctx.db
+          .query('attendanceRecords')
+          .withIndex('by_session_id', (q) => q.eq('sessionId', session._id))
+          .collect()
+        const count = records.filter((ar) => !ar.isDeleted).length
+        return [session._id, count] as const
+      }),
+    )
+    const attendanceCountMap = new Map(attendanceCountsList)
+
+    const results: Array<SessionRow> = []
+
+    for (const session of matching) {
+      if (!session.classYearId) continue
+      const classYear = classYearMap.get(session.classYearId)
+      if (!classYear) continue
+
+      const classRecord = classMap.get(classYear.classId)
+      if (!classRecord) continue
+
+      results.push({
+        sessionId: session._id,
+        classId: classRecord._id,
+        classYearId: session.classYearId,
+        className: classRecord.name,
+        sessionDate: session.sessionDate,
+        sessionType: session.sessionType as 'catechism' | 'supplemental',
+        studentCount: studentCountMap.get(session.classYearId) ?? 0,
+        recordedCount: attendanceCountMap.get(session._id) ?? 0,
+      })
+    }
+
+    return results.sort((a, b) => {
+      const dateCompare = a.sessionDate.localeCompare(b.sessionDate)
+      if (dateCompare !== 0) return dateCompare
+      return a.className.localeCompare(b.className)
+    })
+  },
+})
+
+export const get = query({
+  args: {
+    requesterId: v.id('catechists'),
+    id: v.id('classSessions'),
+  },
+  handler: async (ctx, args) => {
+    await assertValidCatechist(ctx, args.requesterId)
+    const session = await ctx.db.get('classSessions', args.id)
+    if (!session || session.isDeleted) return null
+    return session
+  },
+})
+
+// ─── Mutations ────────────────────────────────────────────────────────────
+
+export const create = mutation({
+  args: {
+    requesterId: v.id('catechists'),
+    classYearId: v.optional(v.id('classYears')),
+    semesterId: v.optional(v.id('semesters')),
+    sessionDate: v.string(),
+    sessionType: v.union(
+      v.literal('mass'),
+      v.literal('catechism'),
+      v.literal('supplemental'),
+      v.literal('extracurricular'),
+    ),
+    notes: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const {
+      requesterId,
+      classYearId,
+      semesterId,
+      sessionType,
+      sessionDate,
+      notes,
+    } = args
+    let academicYearId: Id<'academicYears'>
+
+    if (sessionType === 'catechism' || sessionType === 'supplemental') {
+      if (!classYearId || !semesterId) {
+        throw new Error(CLASS_SESSION_ERRORS.INVALID_SCOPE)
+      }
+
+      const classYear = await ctx.db.get('classYears', classYearId)
+      if (!classYear || classYear.isDeleted) {
+        throw new Error(CLASS_SESSION_ERRORS.CLASS_YEAR_NOT_FOUND)
+      }
+      academicYearId = classYear.academicYearId
+
+      const semester = await ctx.db.get('semesters', semesterId)
+      if (!semester || semester.isDeleted) {
+        throw new Error(CLASS_SESSION_ERRORS.SEMESTER_NOT_FOUND)
+      }
+    } else {
+      // mass or extracurricular — parish-scoped
+      academicYearId = await requireActiveAcademicYear(
+        ctx,
+        CLASS_SESSION_ERRORS.NO_ACTIVE_YEAR,
+      )
+    }
+
+    // Active year guard
+    const academicYear = await ctx.db.get('academicYears', academicYearId)
+    if (!academicYear || academicYear.isDeleted) {
+      throw new Error(CLASS_SESSION_ERRORS.ACADEMIC_YEAR_NOT_FOUND)
+    }
+    if (!academicYear.isActive) {
+      throw new Error(CLASS_SESSION_ERRORS.INACTIVE_ACADEMIC_YEAR)
+    }
+
+    // Auth check
+    if (classYearId) {
+      await assertClassCatechistOrAbove(
+        ctx,
+        requesterId,
+        academicYearId,
+        classYearId,
+      )
+    } else {
+      await assertBoardMemberOrAdmin(ctx, requesterId, academicYearId)
+    }
+
+    if (sessionType === 'mass' || sessionType === 'extracurricular') {
+      const existing = await findExistingParishSession(
+        ctx,
+        sessionType,
+        sessionDate,
+      )
+      if (existing) {
+        if (existing.isCancelled) {
+          throw new Error(CLASS_SESSION_ERRORS.SESSION_CANCELLED)
+        }
+        return existing._id
+      }
+    }
+
+    return await ctx.db.insert('classSessions', {
+      classYearId,
+      semesterId,
+      academicYearId:
+        sessionType === 'mass' || sessionType === 'extracurricular'
+          ? academicYearId
+          : undefined,
+      sessionDate,
+      sessionType,
+      isCancelled: false,
+      notes,
+      isDeleted: false,
+    })
+  },
+})
+
+// Unified backend recurring session schedule generator for class years
+export const generateClassSessionsForSemester = mutation({
+  args: {
+    requesterId: v.id('catechists'),
+    classYearId: v.id('classYears'),
+    semesterId: v.id('semesters'),
+    dayOfWeek: v.number(), // 0 = Sunday, 1 = Monday ... 6 = Saturday
+    startDate: v.string(), // YYYY-MM-DD
+    endDate: v.string(), // YYYY-MM-DD
+    sessionType: v.optional(
+      v.union(v.literal('catechism'), v.literal('supplemental')),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const {
+      requesterId,
+      classYearId,
+      semesterId,
+      dayOfWeek,
+      startDate,
+      endDate,
+    } = args
+    const sessionType = args.sessionType ?? 'catechism'
+
+    const classYear = await ctx.db.get('classYears', classYearId)
+    if (!classYear || classYear.isDeleted) {
+      throw new Error(CLASS_SESSION_ERRORS.CLASS_YEAR_NOT_FOUND)
+    }
+
+    const semester = await ctx.db.get('semesters', semesterId)
+    if (!semester || semester.isDeleted) {
+      throw new Error(CLASS_SESSION_ERRORS.SEMESTER_NOT_FOUND)
+    }
+
+    const academicYear = await ctx.db.get(
+      'academicYears',
+      classYear.academicYearId,
+    )
+    if (!academicYear || academicYear.isDeleted) {
+      throw new Error(CLASS_SESSION_ERRORS.ACADEMIC_YEAR_NOT_FOUND)
+    }
+    if (!academicYear.isActive) {
+      throw new Error(CLASS_SESSION_ERRORS.INACTIVE_ACADEMIC_YEAR)
+    }
+
+    await assertClassCatechistOrAbove(
+      ctx,
+      requesterId,
+      classYear.academicYearId,
+      classYearId,
+    )
+
+    // Fetch existing sessions to prevent duplicate creation on the same date
+    const existingSessions = await ctx.db
+      .query('classSessions')
+      .withIndex('by_class_year_id_and_semester_id', (q) =>
+        q.eq('classYearId', classYearId).eq('semesterId', semesterId),
+      )
+      .collect()
+
+    const existingDates = new Set(
+      existingSessions.filter((s) => !s.isDeleted).map((s) => s.sessionDate),
+    )
+
+    const createdIds: Array<Id<'classSessions'>> = []
+    const start = new Date(startDate)
+    const end = new Date(endDate)
+
+    const current = new Date(start)
+    while (current <= end) {
+      if (current.getDay() === dayOfWeek) {
+        const dateStr = current.toISOString().split('T')[0]
+        if (!existingDates.has(dateStr)) {
+          const id = await ctx.db.insert('classSessions', {
+            classYearId,
+            semesterId,
+            sessionDate: dateStr,
+            sessionType,
+            isCancelled: false,
+            isDeleted: false,
+          })
+          createdIds.push(id)
+          existingDates.add(dateStr)
+        }
+      }
+      current.setDate(current.getDate() + 1)
+    }
+
+    return createdIds
+  },
+})
+
+export const update = mutation({
+  args: {
+    requesterId: v.id('catechists'),
+    sessionId: v.id('classSessions'),
+    sessionDate: v.optional(v.string()),
+    sessionType: v.optional(
+      v.union(
+        v.literal('mass'),
+        v.literal('catechism'),
+        v.literal('supplemental'),
+        v.literal('extracurricular'),
+      ),
+    ),
+    isCancelled: v.optional(v.boolean()),
+    notes: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { requesterId, sessionId, ...fields } = args
+
+    const session = await ctx.db.get('classSessions', sessionId)
+    if (!session || session.isDeleted) {
+      throw new Error(CLASS_SESSION_ERRORS.NOT_FOUND)
+    }
+
+    // Resolve academicYearId from session itself
+    let academicYearId: Id<'academicYears'>
+    if (session.classYearId) {
+      const classYear = await ctx.db.get('classYears', session.classYearId)
+      if (!classYear || classYear.isDeleted) {
+        throw new Error(CLASS_SESSION_ERRORS.CLASS_YEAR_NOT_FOUND)
+      }
+      academicYearId = classYear.academicYearId
+    } else if (session.academicYearId) {
+      academicYearId = session.academicYearId
+    } else {
+      throw new Error(CLASS_SESSION_ERRORS.MISSING_ACADEMIC_YEAR_REF)
+    }
+
+    // Active year guard
+    const academicYear = await ctx.db.get('academicYears', academicYearId)
+    if (!academicYear || academicYear.isDeleted) {
+      throw new Error(CLASS_SESSION_ERRORS.ACADEMIC_YEAR_NOT_FOUND)
+    }
+    if (!academicYear.isActive) {
+      throw new Error(CLASS_SESSION_ERRORS.INACTIVE_ACADEMIC_YEAR)
+    }
+
+    // Auth check
+    if (session.classYearId) {
+      await assertClassCatechistOrAbove(
+        ctx,
+        requesterId,
+        academicYearId,
+        session.classYearId,
+      )
+    } else {
+      await assertBoardMemberOrAdmin(ctx, requesterId, academicYearId)
+    }
+
+    const patch: Record<string, unknown> = {}
+    if (fields.sessionDate !== undefined) patch.sessionDate = fields.sessionDate
+    if (fields.sessionType !== undefined) patch.sessionType = fields.sessionType
+    if (fields.isCancelled !== undefined) patch.isCancelled = fields.isCancelled
+    if (fields.notes !== undefined) patch.notes = fields.notes
+
+    await ctx.db.patch('classSessions', sessionId, patch)
+  },
+})
+
+export const softDelete = mutation({
+  args: {
+    requesterId: v.id('catechists'),
+    sessionId: v.id('classSessions'),
+  },
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get('classSessions', args.sessionId)
+    if (!session || session.isDeleted) {
+      throw new Error(CLASS_SESSION_ERRORS.NOT_FOUND)
+    }
+
+    let academicYearId: Id<'academicYears'>
+    if (session.classYearId) {
+      const classYear = await ctx.db.get('classYears', session.classYearId)
+      if (!classYear || classYear.isDeleted) {
+        throw new Error(CLASS_SESSION_ERRORS.CLASS_YEAR_NOT_FOUND)
+      }
+      academicYearId = classYear.academicYearId
+    } else if (session.academicYearId) {
+      academicYearId = session.academicYearId
+    } else {
+      throw new Error(CLASS_SESSION_ERRORS.MISSING_ACADEMIC_YEAR_REF)
+    }
+
+    const academicYear = await ctx.db.get('academicYears', academicYearId)
+    if (!academicYear || academicYear.isDeleted) {
+      throw new Error(CLASS_SESSION_ERRORS.ACADEMIC_YEAR_NOT_FOUND)
+    }
+    if (!academicYear.isActive) {
+      throw new Error(CLASS_SESSION_ERRORS.INACTIVE_ACADEMIC_YEAR)
+    }
+
+    if (session.classYearId) {
+      await assertClassCatechistOrAbove(
+        ctx,
+        args.requesterId,
+        academicYearId,
+        session.classYearId,
+      )
+    } else {
+      await assertBoardMemberOrAdmin(ctx, args.requesterId, academicYearId)
+    }
+
+    await ctx.db.patch('classSessions', args.sessionId, {
+      isDeleted: true,
+    })
+  },
+})
+
+export const createWithAttendance = mutation({
+  args: {
+    requesterId: v.id('catechists'),
+    classYearId: v.id('classYears'),
+    semesterId: v.id('semesters'),
+    sessionDate: v.string(),
+    sessionType: v.union(v.literal('catechism'), v.literal('supplemental')),
+    notes: v.optional(v.string()),
+    attendance: v.array(
+      v.object({
+        studentId: v.id('students'),
+        status: v.union(
+          v.literal('present'),
+          v.literal('excused_absence'),
+          v.literal('unexcused_absence'),
+          v.literal('late'),
+        ),
+        notes: v.optional(v.string()),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const {
+      requesterId,
+      classYearId,
+      semesterId,
+      sessionType,
+      sessionDate,
+      notes,
+      attendance,
+    } = args
+
+    const classYear = await ctx.db.get('classYears', classYearId)
+    if (!classYear || classYear.isDeleted) {
+      throw new Error(CLASS_SESSION_ERRORS.CLASS_YEAR_NOT_FOUND)
+    }
+    const academicYearId = classYear.academicYearId
+
+    const semester = await ctx.db.get('semesters', semesterId)
+    if (!semester || semester.isDeleted) {
+      throw new Error(CLASS_SESSION_ERRORS.SEMESTER_NOT_FOUND)
+    }
+
+    // Active year guard
+    const academicYear = await ctx.db.get('academicYears', academicYearId)
+    if (!academicYear || academicYear.isDeleted) {
+      throw new Error(CLASS_SESSION_ERRORS.ACADEMIC_YEAR_NOT_FOUND)
+    }
+    if (!academicYear.isActive) {
+      throw new Error(CLASS_SESSION_ERRORS.INACTIVE_ACADEMIC_YEAR)
+    }
+
+    // Auth check
+    await assertClassCatechistOrAbove(
+      ctx,
+      requesterId,
+      academicYearId,
+      classYearId,
+    )
+
+    // Insert the session
+    const sessionId = await ctx.db.insert('classSessions', {
+      classYearId,
+      semesterId,
+      sessionDate,
+      sessionType,
+      isCancelled: false,
+      notes,
+      isDeleted: false,
+    })
+
+    // Insert attendance records
+    const seenStudentIds = new Set<string>()
+    for (const record of attendance) {
+      if (seenStudentIds.has(record.studentId)) {
+        throw new Error(CLASS_SESSION_ERRORS.DUPLICATE_STUDENT_IN_ATTENDANCE)
+      }
+      seenStudentIds.add(record.studentId)
+      // Resolve studentClassId
+      const studentClass = await ctx.db
+        .query('studentClasses')
+        .withIndex('by_student_id_and_class_year_id', (q) =>
+          q.eq('studentId', record.studentId).eq('classYearId', classYearId),
+        )
+        .unique()
+
+      if (
+        !studentClass ||
+        studentClass.isDeleted ||
+        studentClass.status !== 'active'
+      ) {
+        throw new Error(ATTENDANCE_ERRORS.STUDENT_NOT_ENROLLED)
+      }
+
+      await ctx.db.insert('attendanceRecords', {
+        sessionId,
+        studentClassId: studentClass._id,
+        status: record.status,
+        notes: record.notes,
+        recordedBy: requesterId,
+        deviceQueuedAt: Date.now(),
+        syncedAt: Date.now(),
+        isDeleted: false,
+      })
+    }
+
+    return sessionId
+  },
+})
+
+export const openOrGetParishSession = mutation({
+  args: {
+    requesterId: v.id('catechists'),
+    sessionDate: v.string(),
+    sessionType: v.union(v.literal('mass'), v.literal('extracurricular')),
+  },
+  handler: async (ctx, args) => {
+    const { requesterId, sessionDate, sessionType } = args
+
+    // Verify catechist permissions
+    await assertValidCatechist(ctx, requesterId)
+
+    // Look up existing active session for this type and date
+    const activeSession = await findExistingParishSession(
+      ctx,
+      sessionType,
+      sessionDate,
+    )
+    if (activeSession) {
+      if (activeSession.isCancelled) {
+        throw new Error(ATTENDANCE_ERRORS.SESSION_CANCELLED)
+      }
+      return activeSession
+    }
+
+    // Resolve active academic year
+    const activeYearId = await requireActiveAcademicYear(
+      ctx,
+      CLASS_SESSION_ERRORS.NO_ACTIVE_YEAR,
+    )
+
+    const sessionId = await ctx.db.insert('classSessions', {
+      classYearId: undefined,
+      semesterId: undefined,
+      academicYearId: activeYearId,
+      sessionDate,
+      sessionType,
+      isCancelled: false,
+      isDeleted: false,
+    })
+
+    const session = await ctx.db.get('classSessions', sessionId)
+    if (!session) throw new Error('Failed to create session')
+    return session
+  },
+})

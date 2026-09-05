@@ -1,0 +1,521 @@
+import { v } from 'convex/values'
+import { mutation } from './_generated/server'
+import {
+  assertBoardMemberOrAdmin,
+  assertClassCatechistOrAbove,
+  assertValidCatechist,
+} from './lib/authz'
+import { ATTENDANCE_ERRORS } from './lib/errors'
+import { reconcileAttendanceRecord } from './lib/attendance'
+import type { MutationCtx } from './_generated/server'
+import type { Doc, Id } from './_generated/dataModel'
+
+// ─── Helpers ─────────────────────────────────────────────────────────────
+
+async function resolveSession(
+  ctx: MutationCtx,
+  sessionId: Id<'classSessions'>,
+) {
+  const session = await ctx.db.get('classSessions', sessionId)
+  if (!session || session.isDeleted) {
+    throw new Error(ATTENDANCE_ERRORS.SESSION_NOT_FOUND)
+  }
+  if (session.isCancelled) {
+    throw new Error(ATTENDANCE_ERRORS.SESSION_CANCELLED)
+  }
+  return session
+}
+
+async function resolveAcademicYearId(
+  ctx: MutationCtx,
+  session: Doc<'classSessions'>,
+) {
+  if (session.classYearId) {
+    const classYear = await ctx.db.get('classYears', session.classYearId)
+    if (!classYear || classYear.isDeleted) {
+      throw new Error(ATTENDANCE_ERRORS.SESSION_NOT_FOUND)
+    }
+    return classYear.academicYearId
+  }
+  if (session.academicYearId) {
+    return session.academicYearId
+  }
+  throw new Error(ATTENDANCE_ERRORS.SESSION_NOT_FOUND)
+}
+
+async function assertActiveAcademicYear(
+  ctx: MutationCtx,
+  academicYearId: Id<'academicYears'>,
+) {
+  const academicYear = await ctx.db.get('academicYears', academicYearId)
+  if (!academicYear || academicYear.isDeleted) {
+    throw new Error(ATTENDANCE_ERRORS.SESSION_NOT_FOUND)
+  }
+  if (!academicYear.isActive) {
+    throw new Error(ATTENDANCE_ERRORS.INACTIVE_ACADEMIC_YEAR)
+  }
+}
+
+async function resolveStudentClassId(
+  ctx: MutationCtx,
+  studentId: Id<'students'>,
+  session: Doc<'classSessions'>,
+  academicYearId: Id<'academicYears'>,
+): Promise<Id<'studentClasses'>> {
+  if (session.classYearId) {
+    const studentClass = await ctx.db
+      .query('studentClasses')
+      .withIndex('by_student_id_and_class_year_id', (q) =>
+        q.eq('studentId', studentId).eq('classYearId', session.classYearId!),
+      )
+      .unique()
+
+    if (
+      !studentClass ||
+      studentClass.isDeleted ||
+      studentClass.status !== 'active'
+    ) {
+      throw new Error(ATTENDANCE_ERRORS.STUDENT_NOT_ENROLLED)
+    }
+    return studentClass._id
+  }
+
+  const studentClasses = await ctx.db
+    .query('studentClasses')
+    .withIndex('by_student_id', (q) => q.eq('studentId', studentId))
+    .collect()
+
+  const matching = studentClasses.filter(
+    (sc) => !sc.isDeleted && sc.status === 'active' && sc.isPrimaryClass,
+  )
+
+  for (const sc of matching) {
+    const classYear = await ctx.db.get('classYears', sc.classYearId)
+    if (
+      classYear &&
+      !classYear.isDeleted &&
+      classYear.academicYearId === academicYearId
+    ) {
+      return sc._id
+    }
+  }
+
+  throw new Error(ATTENDANCE_ERRORS.STUDENT_NOT_ENROLLED)
+}
+
+// Batched variant of resolveStudentClassId for the common grid case
+// (session tied to one classYearId): one indexed query for the whole
+// class instead of one query per student. Falls back to the per-student
+// resolver for parish-wide sessions with no classYearId.
+async function resolveStudentClassIdsBatch(
+  ctx: MutationCtx,
+  studentIds: Array<Id<'students'>>,
+  session: Doc<'classSessions'>,
+  academicYearId: Id<'academicYears'>,
+): Promise<Map<Id<'students'>, Id<'studentClasses'>>> {
+  const result = new Map<Id<'students'>, Id<'studentClasses'>>()
+
+  if (session.classYearId) {
+    const studentClasses = await ctx.db
+      .query('studentClasses')
+      .withIndex('by_class_year_id', (q) =>
+        q.eq('classYearId', session.classYearId!),
+      )
+      .collect()
+
+    const byStudentId = new Map(studentClasses.map((sc) => [sc.studentId, sc]))
+
+    for (const studentId of studentIds) {
+      const studentClass = byStudentId.get(studentId)
+      if (
+        !studentClass ||
+        studentClass.isDeleted ||
+        studentClass.status !== 'active'
+      ) {
+        throw new Error(ATTENDANCE_ERRORS.STUDENT_NOT_ENROLLED)
+      }
+      result.set(studentId, studentClass._id)
+    }
+
+    return result
+  }
+
+  for (const studentId of studentIds) {
+    result.set(
+      studentId,
+      await resolveStudentClassId(ctx, studentId, session, academicYearId),
+    )
+  }
+
+  return result
+}
+
+async function authCheck(
+  ctx: MutationCtx,
+  requesterId: Id<'catechists'>,
+  session: Doc<'classSessions'>,
+  academicYearId: Id<'academicYears'>,
+) {
+  if (
+    session.sessionType === 'mass' ||
+    session.sessionType === 'extracurricular'
+  ) {
+    await assertValidCatechist(ctx, requesterId)
+  } else if (session.classYearId) {
+    await assertClassCatechistOrAbove(
+      ctx,
+      requesterId,
+      academicYearId,
+      session.classYearId,
+    )
+  } else {
+    await assertBoardMemberOrAdmin(ctx, requesterId, academicYearId)
+  }
+}
+
+export async function resolveCheckInContext(
+  ctx: MutationCtx,
+  args: {
+    requesterId: Id<'catechists'>
+    sessionId: Id<'classSessions'>
+    studentId?: Id<'students'>
+  },
+) {
+  const session = await resolveSession(ctx, args.sessionId)
+  const academicYearId = await resolveAcademicYearId(ctx, session)
+  await assertActiveAcademicYear(ctx, academicYearId)
+  await authCheck(ctx, args.requesterId, session, academicYearId)
+
+  let studentClassId: Id<'studentClasses'> | undefined
+  if (args.studentId) {
+    studentClassId = await resolveStudentClassId(
+      ctx,
+      args.studentId,
+      session,
+      academicYearId,
+    )
+  }
+
+  return { session, academicYearId, studentClassId }
+}
+
+async function upsertAttendanceRecord(
+  ctx: MutationCtx,
+  args: {
+    sessionId: Id<'classSessions'>
+    studentClassId: Id<'studentClasses'>
+    status: 'present' | 'excused_absence' | 'unexcused_absence' | 'late'
+    notes?: string
+    recordedBy: Id<'catechists'>
+    deviceQueuedAt: number
+  },
+) {
+  const { id } = await reconcileAttendanceRecord(ctx, {
+    ...args,
+    mode: 'error_on_conflict',
+  })
+  // status is always non-null here, so reconcile never takes the delete
+  // branch and id is always defined.
+  return id as Id<'attendanceRecords'>
+}
+
+// ─── Mutations ───────────────────────────────────────────────────────────
+
+export const recordAttendance = mutation({
+  args: {
+    requesterId: v.id('catechists'),
+    sessionId: v.id('classSessions'),
+    studentId: v.id('students'),
+    status: v.union(
+      v.literal('present'),
+      v.literal('excused_absence'),
+      v.literal('unexcused_absence'),
+      v.literal('late'),
+    ),
+    notes: v.optional(v.string()),
+    deviceQueuedAt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const { studentClassId } = await resolveCheckInContext(ctx, {
+      requesterId: args.requesterId,
+      sessionId: args.sessionId,
+      studentId: args.studentId,
+    })
+
+    return await upsertAttendanceRecord(ctx, {
+      sessionId: args.sessionId,
+      studentClassId: studentClassId!,
+      status: args.status,
+      notes: args.notes,
+      recordedBy: args.requesterId,
+      deviceQueuedAt: args.deviceQueuedAt,
+    })
+  },
+})
+
+export const bulkRecordAttendance = mutation({
+  args: {
+    requesterId: v.id('catechists'),
+    sessionId: v.id('classSessions'),
+    records: v.array(
+      v.object({
+        studentId: v.id('students'),
+        status: v.union(
+          v.literal('present'),
+          v.literal('excused_absence'),
+          v.literal('unexcused_absence'),
+          v.literal('late'),
+        ),
+        notes: v.optional(v.string()),
+        deviceQueuedAt: v.number(),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const { requesterId, sessionId, records } = args
+
+    const { session, academicYearId } = await resolveCheckInContext(ctx, {
+      requesterId,
+      sessionId,
+    })
+
+    const results: Array<Id<'attendanceRecords'>> = []
+
+    for (const record of records) {
+      const studentClassId = await resolveStudentClassId(
+        ctx,
+        record.studentId,
+        session,
+        academicYearId,
+      )
+
+      const id = await upsertAttendanceRecord(ctx, {
+        sessionId,
+        studentClassId,
+        status: record.status,
+        notes: record.notes,
+        recordedBy: requesterId,
+        deviceQueuedAt: record.deviceQueuedAt,
+      })
+      results.push(id)
+    }
+
+    return results
+  },
+})
+
+export const updateAttendance = mutation({
+  args: {
+    requesterId: v.id('catechists'),
+    attendanceId: v.id('attendanceRecords'),
+    status: v.optional(
+      v.union(
+        v.literal('present'),
+        v.literal('excused_absence'),
+        v.literal('unexcused_absence'),
+        v.literal('late'),
+      ),
+    ),
+    notes: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { requesterId, attendanceId, status, notes } = args
+
+    const record = await ctx.db.get('attendanceRecords', attendanceId)
+    if (!record || record.isDeleted) {
+      throw new Error(ATTENDANCE_ERRORS.RECORD_NOT_FOUND)
+    }
+
+    const session = await resolveSession(ctx, record.sessionId)
+    const academicYearId = await resolveAcademicYearId(ctx, session)
+    await assertActiveAcademicYear(ctx, academicYearId)
+    await authCheck(ctx, requesterId, session, academicYearId)
+
+    const patch: Record<string, unknown> = {}
+    if (status !== undefined) patch.status = status
+    if (notes !== undefined) patch.notes = notes
+
+    await ctx.db.patch('attendanceRecords', attendanceId, patch)
+  },
+})
+
+// ─── Grid Mutations ──────────────────────────────────────────────────────
+
+export const saveGridAttendance = mutation({
+  args: {
+    requesterId: v.id('catechists'),
+    sessionId: v.id('classSessions'),
+    studentId: v.id('students'),
+    status: v.optional(
+      v.union(
+        v.literal('present'),
+        v.literal('excused_absence'),
+        v.literal('unexcused_absence'),
+        v.literal('late'),
+        v.null(),
+      ),
+    ),
+    notes: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { requesterId, sessionId, studentId, status, notes } = args
+
+    const session = await resolveSession(ctx, sessionId)
+    const academicYearId = await resolveAcademicYearId(ctx, session)
+    await assertActiveAcademicYear(ctx, academicYearId)
+    await authCheck(ctx, requesterId, session, academicYearId)
+
+    const studentClassId = await resolveStudentClassId(
+      ctx,
+      studentId,
+      session,
+      academicYearId,
+    )
+
+    await reconcileAttendanceRecord(ctx, {
+      sessionId,
+      studentClassId,
+      status: status ?? null,
+      notes,
+      recordedBy: requesterId,
+      deviceQueuedAt: Date.now(),
+      mode: 'overwrite',
+    })
+
+    return { success: true }
+  },
+})
+
+export const bulkSaveGridAttendance = mutation({
+  args: {
+    requesterId: v.id('catechists'),
+    sessionId: v.id('classSessions'),
+    studentIds: v.array(v.id('students')),
+    status: v.union(
+      v.literal('present'),
+      v.literal('excused_absence'),
+      v.literal('unexcused_absence'),
+      v.literal('late'),
+      v.null(),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const { requesterId, sessionId, studentIds, status } = args
+
+    const session = await resolveSession(ctx, sessionId)
+    const academicYearId = await resolveAcademicYearId(ctx, session)
+    await assertActiveAcademicYear(ctx, academicYearId)
+    await authCheck(ctx, requesterId, session, academicYearId)
+
+    const allExisting = await ctx.db
+      .query('attendanceRecords')
+      .withIndex('by_session_id', (q) => q.eq('sessionId', sessionId))
+      .collect()
+
+    const existingMap = new Map(allExisting.map((r) => [r.studentClassId, r]))
+
+    const studentClassIds = await resolveStudentClassIdsBatch(
+      ctx,
+      studentIds,
+      session,
+      academicYearId,
+    )
+
+    for (const studentId of studentIds) {
+      const studentClassId = studentClassIds.get(studentId)!
+
+      await reconcileAttendanceRecord(ctx, {
+        sessionId,
+        studentClassId,
+        status,
+        recordedBy: requesterId,
+        deviceQueuedAt: Date.now(),
+        mode: 'overwrite',
+        existing: existingMap.get(studentClassId) ?? null,
+      })
+    }
+
+    return { success: true }
+  },
+})
+
+// ─── Offline QR-First Attendance ──────────────────────────────────────────
+
+export const recordBatch = mutation({
+  args: {
+    requesterId: v.id('catechists'),
+    records: v.array(
+      v.object({
+        localId: v.string(),
+        sessionId: v.id('classSessions'),
+        studentClassId: v.id('studentClasses'),
+        status: v.union(
+          v.literal('present'),
+          v.literal('excused_absence'),
+          v.literal('unexcused_absence'),
+          v.literal('late'),
+        ),
+        notes: v.optional(v.string()),
+        deviceQueuedAt: v.number(),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const { requesterId, records } = args
+
+    // Check valid catechist
+    await assertValidCatechist(ctx, requesterId)
+
+    const results: Array<{
+      localId: string
+      status: 'synced' | 'conflict' | 'error'
+      error?: string
+    }> = []
+
+    for (const record of records) {
+      try {
+        const session = await ctx.db.get('classSessions', record.sessionId)
+        if (!session || session.isDeleted) {
+          results.push({
+            localId: record.localId,
+            status: 'error',
+            error: 'Session not found',
+          })
+          continue
+        }
+
+        const academicYearId = await resolveAcademicYearId(ctx, session)
+        await assertActiveAcademicYear(ctx, academicYearId)
+
+        // Auth check
+        await authCheck(ctx, requesterId, session, academicYearId)
+
+        // Reconcile via domain helper
+        const reconcileRes = await reconcileAttendanceRecord(ctx, {
+          sessionId: record.sessionId,
+          studentClassId: record.studentClassId,
+          status: record.status,
+          notes: record.notes,
+          recordedBy: requesterId,
+          deviceQueuedAt: record.deviceQueuedAt,
+          mode: 'first_write_wins',
+        })
+
+        results.push({
+          localId: record.localId,
+          // record.status is always non-null here, so reconcile never
+          // takes the delete branch.
+          status: reconcileRes.action as 'synced' | 'conflict',
+        })
+      } catch (err: any) {
+        results.push({
+          localId: record.localId,
+          status: 'error',
+          error: err.message || 'Unknown error occurred',
+        })
+      }
+    }
+
+    return results
+  },
+})

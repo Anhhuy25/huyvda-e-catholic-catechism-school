@@ -1,0 +1,608 @@
+import { useCallback, useMemo, useState } from 'react'
+import { useQuery } from 'convex/react'
+import { useTranslation } from 'react-i18next'
+import {
+  AlertCircleIcon,
+  AlertTriangleIcon,
+  AwardIcon,
+  CheckCircle2Icon,
+  CircleIcon,
+  ClockIcon,
+  GraduationCapIcon,
+  PencilIcon,
+  PercentCircleIcon,
+  XCircleIcon,
+  XIcon,
+} from 'lucide-react'
+import { api } from '../../../convex/_generated/api'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '../ui/card'
+import type { ComponentProps, FC } from 'react'
+import type { Id } from '../../../convex/_generated/dataModel'
+import { formatDate } from '~/lib/locale'
+import { computeAnnualAvg, computeSemesterAvg } from '~/lib/grading'
+import { Badge } from '~/components/ui/badge'
+import { Skeleton } from '~/components/ui/skeleton'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '~/components/ui/dialog'
+
+export type Requester =
+  | { accountType: 'catechist'; requesterId: Id<'catechists'> }
+  | { accountType: 'student'; requesterId: Id<'students'> }
+
+interface EnrollmentSummaryProps {
+  studentClassId: Id<'studentClasses'>
+  requester: Requester
+}
+
+type AttendanceStatus =
+  'present' | 'late' | 'excused_absence' | 'unexcused_absence'
+
+const ATTENDANCE_STYLE: Record<
+  AttendanceStatus,
+  { icon: React.ReactNode; card: string; chip: string }
+> = {
+  present: {
+    icon: <CheckCircle2Icon className="size-5" />,
+    card: 'border-green-500/30 bg-green-500/10 text-green-800 dark:text-green-200',
+    chip: 'bg-green-500/15 text-green-700 dark:text-green-300',
+  },
+  late: {
+    icon: <ClockIcon className="size-5" />,
+    card: 'border-yellow-500/30 bg-yellow-500/10 text-yellow-800 dark:text-yellow-200',
+    chip: 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-300',
+  },
+  excused_absence: {
+    icon: <AlertCircleIcon className="size-5" />,
+    card: 'border-purple-500/30 bg-purple-500/10 text-purple-800 dark:text-purple-200',
+    chip: 'bg-purple-500/15 text-purple-700 dark:text-purple-300',
+  },
+  unexcused_absence: {
+    icon: <AlertTriangleIcon className="size-5" />,
+    card: 'border-red-500/30 bg-red-500/10 text-red-800 dark:text-red-200',
+    chip: 'bg-red-500/15 text-red-700 dark:text-red-300',
+  },
+}
+
+// "unset" per the project's attendance status color convention — sessions
+// with no attendance record at all, not a real AttendanceStatus.
+const NOT_MARKED_STYLE = {
+  icon: <CircleIcon className="size-5" />,
+  card: 'border-gray-400/30 bg-gray-400/10 text-gray-700 dark:text-gray-300',
+}
+
+const ATTENDANCE_STAT_CONFIG: Array<{
+  status: AttendanceStatus
+  dataKey: 'present' | 'late' | 'excusedAbsence' | 'unexcusedAbsence'
+  labelKey: string
+}> = [
+  {
+    status: 'present',
+    dataKey: 'present',
+    labelKey: 'students.enrollments.summary.attendance.present',
+  },
+  {
+    status: 'late',
+    dataKey: 'late',
+    labelKey: 'students.enrollments.summary.attendance.late',
+  },
+  {
+    status: 'excused_absence',
+    dataKey: 'excusedAbsence',
+    labelKey: 'students.enrollments.summary.attendance.excusedAbsence',
+  },
+  {
+    status: 'unexcused_absence',
+    dataKey: 'unexcusedAbsence',
+    labelKey: 'students.enrollments.summary.attendance.unexcusedAbsence',
+  },
+]
+
+const MORALITY_TEXT_COLOR: Record<string, string> = {
+  excellent: 'text-green-700 dark:text-green-300',
+  good: 'text-green-700 dark:text-green-300',
+  average: 'text-foreground',
+  below_average: 'text-red-600 dark:text-red-400',
+  poor: 'text-red-600 dark:text-red-400',
+}
+
+function ResultMiniCard({
+  label,
+  className,
+  children,
+}: {
+  label: string
+  className?: string
+  children: React.ReactNode
+}) {
+  return (
+    <div
+      className={`rounded-md border bg-muted/40 px-3 py-2 ${className ?? ''}`}
+    >
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-0.5 text-sm font-medium">{children}</div>
+    </div>
+  )
+}
+
+function CompletionMiniCard({
+  isCompleted,
+  t,
+}: {
+  isCompleted: boolean
+  t: (key: string) => string
+}) {
+  return (
+    <ResultMiniCard label={t('students.enrollments.summary.completionLabel')}>
+      <span className="flex items-center gap-1.5">
+        {isCompleted ? (
+          <CheckCircle2Icon className="size-4 shrink-0 text-green-600 dark:text-green-400" />
+        ) : (
+          <XCircleIcon className="size-4 shrink-0 text-red-500 dark:text-red-400" />
+        )}
+        {isCompleted
+          ? t('evaluations.isCompleted')
+          : t('students.status.withdrawn')}
+      </span>
+    </ResultMiniCard>
+  )
+}
+
+const StatBlock: FC<
+  {
+    label: string
+    value: string | number
+    icon: React.ReactNode
+    onClick?: () => void
+  } & ComponentProps<typeof Card>
+> = ({ label, value, icon, onClick, className, ...props }) => {
+  const card = (
+    <Card
+      className={
+        onClick
+          ? `h-full transition-shadow hover:shadow-md ${className ?? ''}`
+          : className
+      }
+      size="sm"
+      {...props}
+    >
+      <CardHeader>
+        <CardTitle className="flex items-start gap-2 text-sm sm:text-base">
+          {icon && <div className="">{icon}</div>}
+          {label}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="text-2xl font-semibold text-right">{value}</p>
+      </CardContent>
+    </Card>
+  )
+
+  if (!onClick) return card
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+    >
+      {card}
+    </button>
+  )
+}
+
+function AttendanceRecordsDialog({
+  studentClassId,
+  requester,
+  status,
+  onOpenChange,
+}: {
+  studentClassId: Id<'studentClasses'>
+  requester: Requester
+  status: AttendanceStatus | null
+  onOpenChange: (open: boolean) => void
+}) {
+  const { t } = useTranslation()
+
+  const catechistRecords = useQuery(
+    api.attendanceQueries.listAttendanceRecordsForStudentClass,
+    status && requester.accountType === 'catechist'
+      ? { requesterId: requester.requesterId, studentClassId }
+      : 'skip',
+  )
+  const studentRecords = useQuery(
+    api.attendanceQueries.listMyAttendanceRecordsForStudentClass,
+    status && requester.accountType === 'student'
+      ? { requesterId: requester.requesterId, studentClassId }
+      : 'skip',
+  )
+  const records =
+    requester.accountType === 'catechist' ? catechistRecords : studentRecords
+
+  const filtered = useMemo(
+    () => records?.filter((r) => r.status === status) ?? [],
+    [records, status],
+  )
+
+  const isAbsence =
+    status === 'excused_absence' || status === 'unexcused_absence'
+
+  return (
+    <Dialog open={status !== null} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            {status && ATTENDANCE_STYLE[status].icon}
+            {status && t(`attendance.status.${status}`)}
+          </DialogTitle>
+        </DialogHeader>
+
+        {records === undefined ? (
+          <div className="flex flex-col gap-2">
+            <Skeleton className="h-14 w-full" />
+            <Skeleton className="h-14 w-full" />
+            <Skeleton className="h-14 w-full" />
+          </div>
+        ) : filtered.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {t('students.enrollments.summary.attendance.records.empty')}
+          </p>
+        ) : (
+          <ul className="flex max-h-80 flex-col gap-2 overflow-y-auto">
+            {filtered.map((record) => (
+              <li key={record._id} className="rounded-lg border p-3 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium">
+                    {formatDate(record.sessionDate, { dateStyle: 'full' })}
+                  </span>
+                  <Badge variant="outline">
+                    {t(`attendance.sessionType.${record.sessionType}`)}
+                  </Badge>
+                </div>
+                {isAbsence && (
+                  <p className="mt-1.5 text-muted-foreground">
+                    <span className="font-medium">
+                      {t(
+                        'students.enrollments.summary.attendance.records.reason',
+                      )}
+                      :{' '}
+                    </span>
+                    {record.notes ||
+                      t(
+                        'students.enrollments.summary.attendance.records.noReason',
+                      )}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+export function EnrollmentSummary({
+  studentClassId,
+  requester,
+}: EnrollmentSummaryProps) {
+  const { t } = useTranslation()
+  const [selectedStatus, setSelectedStatus] = useState<AttendanceStatus | null>(
+    null,
+  )
+
+  const catechistData = useQuery(
+    api.students.getEnrollmentSummary,
+    requester.accountType === 'catechist'
+      ? { requesterId: requester.requesterId, studentClassId }
+      : 'skip',
+  )
+  const studentData = useQuery(
+    api.students.getMyEnrollmentSummary,
+    requester.accountType === 'student'
+      ? { requesterId: requester.requesterId, studentClassId }
+      : 'skip',
+  )
+  const data =
+    requester.accountType === 'catechist' ? catechistData : studentData
+
+  const semesterLabel = useCallback(
+    (info: { semesterName?: string; semesterNumber: number }) =>
+      info.semesterName ||
+      t('students.enrollments.summary.grading.semesterLabel', {
+        number: info.semesterNumber,
+      }),
+    [t],
+  )
+
+  const semesterAvgBySemesterId = useMemo(() => {
+    const map = new Map<string, number | null>()
+    if (!data) return map
+    for (const semester of data.grading) {
+      map.set(semester.semesterId, computeSemesterAvg(semester.exams))
+    }
+    return map
+  }, [data])
+
+  const annualAvg = useMemo(() => {
+    if (!data) return null
+    return computeAnnualAvg(
+      data.academicYearSemesterIds.map(
+        (id) => semesterAvgBySemesterId.get(id) ?? null,
+      ),
+    )
+  }, [data, semesterAvgBySemesterId])
+
+  if (data === undefined) {
+    return (
+      <div className="flex flex-col gap-3 p-4">
+        <Skeleton className="h-8 w-full" />
+        <Skeleton className="h-24 w-full" />
+      </div>
+    )
+  }
+
+  if (data === null) {
+    return (
+      <p className="p-4 text-sm text-muted-foreground">
+        {t('students.enrollments.noRecord')}
+      </p>
+    )
+  }
+
+  return (
+    <div className="p-4">
+      <Tabs defaultValue="attendance">
+        <TabsList>
+          <TabsTrigger value="attendance">
+            {t('students.enrollments.summary.tabs.attendance')}
+          </TabsTrigger>
+          <TabsTrigger value="grading">
+            {t('students.enrollments.summary.tabs.grading')}
+          </TabsTrigger>
+          <TabsTrigger value="semesterYear">
+            {t('students.enrollments.summary.tabs.semesterYear')}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="attendance">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+            {ATTENDANCE_STAT_CONFIG.map(({ status, dataKey, labelKey }) => (
+              <StatBlock
+                key={status}
+                label={t(labelKey)}
+                value={data.attendance[dataKey]}
+                className={ATTENDANCE_STYLE[status].card}
+                icon={ATTENDANCE_STYLE[status].icon}
+                onClick={() => setSelectedStatus(status)}
+              />
+            ))}
+            <StatBlock
+              label={t('students.enrollments.summary.attendance.notMarked')}
+              value={data.attendance.notMarked}
+              className={NOT_MARKED_STYLE.card}
+              icon={NOT_MARKED_STYLE.icon}
+            />
+            <StatBlock
+              label={t('students.enrollments.summary.attendance.rate')}
+              value={`${(data.attendance.rate * 100).toFixed(1)}%`}
+              className="border-blue-500/30 bg-blue-500/10 text-blue-800 dark:text-blue-200"
+              icon={<PercentCircleIcon className="size-5" />}
+            />
+          </div>
+          {data.attendance.total === 0 && (
+            <p className="mt-3 text-sm text-muted-foreground">
+              {t('students.enrollments.summary.attendance.noRecord')}
+            </p>
+          )}
+
+          <AttendanceRecordsDialog
+            studentClassId={studentClassId}
+            requester={requester}
+            status={selectedStatus}
+            onOpenChange={(open) => !open && setSelectedStatus(null)}
+          />
+        </TabsContent>
+
+        <TabsContent value="grading">
+          {data.grading.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {t('students.enrollments.summary.grading.noRecord')}
+            </p>
+          ) : (
+            <div className="flex flex-col gap-4 md:grid md:grid-cols-2 lg:grid-cols-3">
+              {data.grading.map((semester) => (
+                <Card key={semester.semesterId} className="ring-primary/10">
+                  <CardHeader>
+                    <CardTitle className="flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-2">
+                        <GraduationCapIcon className="size-5 text-primary" />
+                        {semesterLabel(semester)}
+                      </span>
+                      <span className="rounded-full bg-primary/10 px-3 py-1 text-sm font-semibold text-primary">
+                        {semesterAvgBySemesterId
+                          .get(semester.semesterId)
+                          ?.toFixed(1) ?? '—'}
+                      </span>
+                    </CardTitle>
+                    <CardDescription>
+                      {t('students.enrollments.summary.grading.examCount', {
+                        count: semester.exams.length,
+                      })}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ul className="flex flex-col gap-2">
+                      {semester.exams.map((exam) => (
+                        <li
+                          key={`${exam.columnType}-${exam.columnName}`}
+                          className="flex items-center justify-between gap-3 rounded-lg border p-2.5 text-sm"
+                        >
+                          <div className="flex items-center gap-2">
+                            {exam.scaleType === 'scale_10' && (
+                              <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                                <XIcon className="size-2" />
+                                {exam.weight}
+                              </div>
+                            )}
+                            <div className="flex flex-col items-start">
+                              <span className="font-medium">
+                                {exam.columnName}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {t(`exams.create.type.${exam.columnType}`, {
+                                  defaultValue: exam.columnType,
+                                })}
+                              </span>
+                            </div>
+                          </div>
+                          <span className="rounded-full bg-primary/10 px-3 py-1 text-base font-semibold text-primary">
+                            {exam.scoreValue ?? exam.scoreLabel ?? '—'}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="semesterYear">
+          <div className="flex flex-col gap-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <GraduationCapIcon className="size-5 text-primary" />
+                  {t('students.enrollments.summary.semester.title')}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {data.semesterResults.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    {t('students.enrollments.summary.semester.noRecord')}
+                  </p>
+                ) : (
+                  <ul className="flex flex-col gap-2">
+                    {data.semesterResults.map((result) => (
+                      <li
+                        key={result.semesterId}
+                        className="rounded-lg border p-3"
+                      >
+                        <div className="text-sm font-medium">
+                          {semesterLabel(result)}
+                        </div>
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                          <ResultMiniCard
+                            label={t(
+                              'students.enrollments.summary.grading.avgLabel',
+                            )}
+                          >
+                            {semesterAvgBySemesterId
+                              .get(result.semesterId)
+                              ?.toFixed(1) ?? '—'}
+                          </ResultMiniCard>
+                          {result.morality && (
+                            <ResultMiniCard label={t('evaluations.morality')}>
+                              <span
+                                className={
+                                  MORALITY_TEXT_COLOR[result.morality] ??
+                                  'text-foreground'
+                                }
+                              >
+                                {t(`evaluations.morality.${result.morality}`)}
+                              </span>
+                            </ResultMiniCard>
+                          )}
+                          {result.isCompleted !== undefined && (
+                            <CompletionMiniCard
+                              isCompleted={result.isCompleted}
+                              t={t}
+                            />
+                          )}
+                        </div>
+                        {result.teacherNote && (
+                          <p className="mt-2 flex items-start gap-1.5 text-sm text-muted-foreground italic">
+                            <PencilIcon className="mt-0.5 size-4 shrink-0" />
+                            {result.teacherNote}
+                          </p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="border-amber-500/30 ring-amber-500/20">
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between gap-2 text-amber-800 dark:text-amber-200">
+                  <span className="flex items-center gap-2">
+                    <AwardIcon className="size-5 text-amber-500" />
+                    {t('students.enrollments.summary.annual.title')}
+                  </span>
+                  <span className="rounded-full bg-amber-500/15 px-3 py-1 text-sm font-semibold text-amber-700 dark:text-amber-300">
+                    {annualAvg?.toFixed(1) ?? '—'}
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {!data.annualResult ? (
+                  <p className="text-sm text-muted-foreground">
+                    {t('students.enrollments.summary.annual.noRecord')}
+                  </p>
+                ) : (
+                  <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      {data.annualResult.conductGrade && (
+                        <ResultMiniCard
+                          label={t('evaluations.morality')}
+                          className="border-amber-500/20 bg-amber-500/10"
+                        >
+                          <span
+                            className={
+                              MORALITY_TEXT_COLOR[
+                                data.annualResult.conductGrade
+                              ] ?? 'text-foreground'
+                            }
+                          >
+                            {t(
+                              `evaluations.morality.${data.annualResult.conductGrade}`,
+                            )}
+                          </span>
+                        </ResultMiniCard>
+                      )}
+                      {data.annualResult.isCompleted !== undefined && (
+                        <CompletionMiniCard
+                          isCompleted={data.annualResult.isCompleted}
+                          t={t}
+                        />
+                      )}
+                    </div>
+                    {data.annualResult.remark && (
+                      <p className="mt-2 flex items-start gap-1.5 text-sm text-muted-foreground italic">
+                        <PencilIcon className="mt-0.5 size-4 shrink-0" />
+                        {data.annualResult.remark}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
+    </div>
+  )
+}

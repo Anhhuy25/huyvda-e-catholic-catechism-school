@@ -1,0 +1,142 @@
+import { fireEvent, render, screen } from '@testing-library/react'
+import { useQuery } from 'convex/react'
+import { describe, expect, test, vi } from 'vitest'
+import { YearSwitcher } from './year-switcher'
+import { useSelectedAcademicYear } from '~/lib/academic-year'
+
+vi.mock('~/lib/academic-year', () => ({
+  useSelectedAcademicYear: vi.fn(),
+}))
+
+describe('YearSwitcher component', () => {
+  test('renders loading skeleton when queries are loading', () => {
+    vi.mocked(useSelectedAcademicYear).mockReturnValue({
+      selectedYearId: null,
+      setSelectedYearId: vi.fn(),
+    })
+    vi.mocked(useQuery).mockReturnValue(undefined) // Loading state
+
+    const { container } = render(<YearSwitcher />)
+    expect(container.querySelector('[data-slot=skeleton]')).toBeInTheDocument()
+  })
+
+  test('renders select selector trigger with year name and active marker', () => {
+    const handleSelect = vi.fn()
+    vi.mocked(useSelectedAcademicYear).mockReturnValue({
+      selectedYearId: 'year1' as any,
+      setSelectedYearId: handleSelect,
+    })
+
+    vi.mocked(useQuery).mockReturnValue({
+      activeYear: null,
+      semesters: [],
+      recentYears: [
+        {
+          _id: 'year1',
+          name: '2024-2025',
+          startDate: '2024-09-01',
+          endDate: '2025-05-31',
+          timezone: 'Asia/Ho_Chi_Minh',
+          isActive: true,
+          isDeleted: false,
+        },
+        {
+          _id: 'year2',
+          name: '2025-2026',
+          startDate: '2025-09-01',
+          endDate: '2026-05-31',
+          timezone: 'Asia/Ho_Chi_Minh',
+          isActive: false,
+          isDeleted: false,
+        },
+      ],
+    } as any)
+
+    render(<YearSwitcher />)
+
+    const trigger = screen.getByRole('combobox')
+    expect(trigger).toBeInTheDocument()
+
+    // Open combobox popup
+    fireEvent.click(trigger)
+
+    // The year name appears in both the trigger value and the dropdown option
+    const yearMatches = screen.getAllByText(/2024-2025/)
+    expect(yearMatches.length).toBeGreaterThanOrEqual(1)
+  })
+
+  test('calls setSelectedYearId when a year option is selected', () => {
+    const handleSelect = vi.fn()
+    vi.mocked(useSelectedAcademicYear).mockReturnValue({
+      selectedYearId: 'year1' as any,
+      setSelectedYearId: handleSelect,
+    })
+
+    vi.mocked(useQuery).mockReturnValue({
+      activeYear: null,
+      semesters: [],
+      recentYears: [
+        {
+          _id: 'year1',
+          name: '2024-2025',
+          startDate: '2024-09-01',
+          endDate: '2025-05-31',
+          timezone: 'Asia/Ho_Chi_Minh',
+          isActive: true,
+          isDeleted: false,
+        },
+        {
+          _id: 'year2',
+          name: '2025-2026',
+          startDate: '2025-09-01',
+          endDate: '2026-05-31',
+          timezone: 'Asia/Ho_Chi_Minh',
+          isActive: false,
+          isDeleted: false,
+        },
+      ],
+    } as any)
+
+    render(<YearSwitcher />)
+
+    fireEvent.click(screen.getByRole('combobox'))
+
+    const option = screen.getByRole('option', { name: /2025-2026/ })
+    // BaseUI listbox items select on pointer interaction, not a plain click
+    fireEvent.pointerDown(option)
+    fireEvent.click(option)
+
+    expect(handleSelect).toHaveBeenCalledWith('year2')
+  })
+
+  test('handles null selectedYearId correctly', () => {
+    vi.mocked(useSelectedAcademicYear).mockReturnValue({
+      selectedYearId: null,
+      setSelectedYearId: vi.fn(),
+    })
+
+    vi.mocked(useQuery).mockReturnValue({
+      activeYear: null,
+      semesters: [],
+      recentYears: [
+        {
+          _id: 'year1',
+          name: '2024-2025',
+          startDate: '2024-09-01',
+          endDate: '2025-05-31',
+          timezone: 'Asia/Ho_Chi_Minh',
+          isActive: true,
+          isDeleted: false,
+        },
+      ],
+    } as any)
+
+    render(<YearSwitcher />)
+
+    const trigger = screen.getByRole('combobox')
+    expect(trigger).toBeInTheDocument()
+
+    // Test onValueChange empty value logic if possible,
+    // but the branch `selectedYearId ?? ''` is already covered by rendering this state
+  })
+})

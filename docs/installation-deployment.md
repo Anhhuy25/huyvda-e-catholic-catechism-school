@@ -1,0 +1,173 @@
+[← Back to index](README.md)
+
+## 17. Installation & Deployment
+
+This app has **two independent deployables**: the Convex backend (database + functions) and the TanStack Start frontend (static/SSR site). They deploy separately and talk to each other over `VITE_CONVEX_URL`. Keep that split in mind for everything below — "deploying the frontend" never touches your data, and "deploying Convex" never touches your hosting.
+
+### 17.1 Architecture Recap
+
+```
+Browser  ──►  Frontend host (Vercel / Netlify / any Node server)
+                   │  reads VITE_CONVEX_URL at build/runtime
+                   ▼
+              Convex backend (Convex Cloud, or self-hosted)
+```
+
+The frontend is a [TanStack Start](https://tanstack.com/start) app built on [Nitro](https://nitro.build), which is deploy-target-agnostic — it compiles to whatever platform's expected output format via a "preset." No platform-specific code lives in the app itself.
+
+### 17.2 Prerequisites
+
+- Node.js (LTS) and npm
+- A [Convex](https://convex.dev) account (free tier is enough to start), **or** a self-hosted Convex backend (§17.6)
+- Git
+
+### 17.3 Forking This Project
+
+If you're standing up your own instance (e.g. for a different parish), you don't need to touch any code to rebrand data — org name, diocese, etc. are runtime config (`appConfig` table in [`convex/schema.ts`](../convex/schema.ts)). Steps:
+
+1. **Fork/clone the repo.**
+
+   ```
+   git clone <your-fork-url>
+   cd e-catholic-catechism-school
+   npm install
+   ```
+
+2. **Create your own Convex project** — don't reuse the original author's deployment. Run:
+
+   ```
+   npx convex dev
+   ```
+
+   Log in (or sign up) when prompted, choose "create a new project." This generates a fresh `.env.local` pointing at *your* deployment — you now own your own database, isolated from anyone else's fork.
+3. **Follow [Developer Onboarding](developer-onboarding.md)** for local setup, seeding, and first login — same steps whether you're the original maintainer or a fresh fork.
+4. **Set your locale defaults** in `.env.local` / your hosting provider's env vars if not Vietnam-based:
+
+   ```
+   VITE_DEFAULT_TIMEZONE=Asia/Ho_Chi_Minh
+   VITE_DEFAULT_LOCALE=vi-VN
+   ```
+
+5. **Push your own remote** and detach from the original repo's history if you don't want to track upstream:
+
+   ```
+   git remote set-url origin <your-new-remote>
+   ```
+
+   (Skip this if you intend to pull upstream updates — keep `origin` as your fork and add the original as an `upstream` remote instead.)
+
+### 17.4 Deploying Convex (Backend)
+
+Regardless of hosting platform for the frontend, push your Convex functions/schema to a production deployment before going live:
+
+```
+npx convex deploy
+```
+
+This requires a **production** Convex deployment (separate from your `dev:` one) — Convex's dashboard walks you through creating it the first time. Note the production `VITE_CONVEX_URL` and `VITE_CONVEX_SITE_URL` it gives you; you'll set those on your frontend host, not in `.env.local` (which is dev-only and gitignored).
+
+#### 17.4.1 Required Convex Environment Variables
+
+Set these in the Convex dashboard (**Settings → Environment Variables**) for your production deployment — not in `.env.local`, which only reaches the frontend build, never Convex functions.
+
+- **`BREAK_GLASS_CODE`** — required. Emergency override code used by backend break-glass access paths (recovery when normal auth is unavailable/locked out). Without it set, break-glass access is disabled — pick a long random secret, store it somewhere your ops team can reach outside the app itself (password manager, not a doc), and never commit it.
+- **`CATECHIST_ACCOUNT_PREFIX`** / **`STUDENT_ACCOUNT_PREFIX`** — optional, default to `"CAT"` / `"STD"`. Prefix used when generating catechist/student login IDs. Recommended to override with something non-obvious in production: the defaults are public (checked into this repo), so leaving them as-is lets an attacker guess valid login-ID patterns for credential-stuffing/enumeration attempts. Pick short, non-default strings unique to your deployment.
+
+Set all three before running your first production `npx convex deploy` and before `/setup`.
+
+### 17.5 Deploying the Frontend
+
+The build command is always the same:
+
+```
+npm run build
+```
+
+This produces a Nitro output (`.output/`) shaped for whatever preset is active. `npm start` (`node .output/server/index.mjs`) runs it as a plain Node server — that's the fallback path for any platform that isn't specifically detected.
+
+#### Option A — Vercel (this project's default target)
+
+Vercel auto-detects Nitro/TanStack Start projects — no config file needed in most cases.
+
+1. Import the repo in the Vercel dashboard (or `vercel` CLI).
+2. Set environment variables in Vercel's project settings:
+   - `VITE_CONVEX_URL`
+   - `VITE_CONVEX_SITE_URL`
+   - `VITE_DEFAULT_TIMEZONE`, `VITE_DEFAULT_LOCALE`
+   - Do **not** set `CONVEX_DEPLOYMENT` here — that's only for `npx convex dev`/`deploy` running locally/in CI, not needed at frontend runtime.
+3. Build command: `npm run build`. Output directory: leave default (Vercel's Nitro preset handles it).
+4. Deploy. Re-run `npx convex deploy` separately whenever backend code changes — Vercel deploys don't touch Convex.
+
+##### Auto-deploy Convex on every Vercel deploy
+
+Set `CONVEX_DEPLOY_KEY` in Vercel to make Vercel push Convex functions/schema itself on each deploy — no manual `npx convex deploy` step.
+
+1. **Get deploy key from Convex dashboard**: open your production deployment → **Settings** → **Deploy Keys** → **Generate Production Deploy Key**. Copy it (shown once).
+2. **Set it in Vercel**: project **Settings → Environment Variables** → add `CONVEX_DEPLOY_KEY`, paste key, scope to **Production** (and Preview, if you want preview branches deploying against a preview Convex deployment). Mark it **Secret**.
+3. **Change build command** to run Convex deploy before the frontend build:
+
+   ```
+   npx convex deploy --cmd 'npm run build'
+   ```
+
+   `convex deploy` reads `CONVEX_DEPLOY_KEY` from env, pushes functions/schema, then runs the given `--cmd` for the frontend build — one Vercel deploy now ships backend + frontend atomically.
+4. Treat `CONVEX_DEPLOY_KEY` as secret — same handling as `SENTRY_AUTH_TOKEN`: never in `.env.local`, never committed.
+
+#### Option B — Netlify
+
+Nitro ships a Netlify preset. Two ways to select it:
+
+1. **Env var (simplest):** set `NITRO_PRESET=netlify` in your Netlify site's build environment variables, alongside the `VITE_*` vars from Option A. Build command `npm run build`, publish directory `.output/public` (Nitro's Netlify preset also emits the required `netlify/functions` output for SSR routes automatically).
+2. **Or a `netlify.toml`** at the repo root if you want it explicit/checked in:
+
+   ```toml
+   [build]
+     command = "npm run build"
+     publish = ".output/public"
+
+   [build.environment]
+     NITRO_PRESET = "netlify"
+   ```
+
+Either way, set the same `VITE_CONVEX_URL` / `VITE_CONVEX_SITE_URL` / locale vars as environment variables in Netlify's dashboard.
+
+#### Option C — Any generic Node host (self-hosted, Docker, a VPS, etc.)
+
+Nitro's default preset already targets a plain Node server, so this needs no preset override:
+
+```
+npm install
+npm run build
+npm start
+```
+
+`npm start` runs `node .output/server/index.mjs` and listens on `PORT` (default 3000) — set `PORT` and the `VITE_*` env vars in your process manager (systemd, pm2, Docker `ENV`, etc.). This is also the path to use for other platforms Nitro supports a preset for (Cloudflare, Deno Deploy, AWS Lambda, ...) — set `NITRO_PRESET` accordingly and consult [Nitro's deploy docs](https://nitro.build/deploy) for the exact preset name and any platform-specific env vars.
+
+### 17.6 Self-Hosting Convex (Instead of Convex Cloud)
+
+Everything above assumes Convex Cloud (`*.convex.cloud` / `*.convex.site` URLs). If you need to run the backend on your own infrastructure instead — e.g. data residency requirements, no third-party dependency — Convex publishes an official self-hosting path:
+
+- **Self-hosted Convex backend guide:** <https://github.com/get-convex/convex-backend/blob/main/self-hosted/README.md>
+- **Convex docs — self-hosting overview:** <https://docs.convex.dev/production/self-hosting>
+
+At a high level: you run the open-source Convex backend binary/Docker image yourself, point `CONVEX_DEPLOYMENT`/`VITE_CONVEX_URL` at your own host instead of `*.convex.cloud`, and use the same `npx convex deploy` workflow against it. Schema (`convex/schema.ts`) and functions are unchanged — self-hosting is an infrastructure choice, not a code change. Follow Convex's own guide for the current setup steps since this evolves independently of this project.
+
+### 17.7 Production Checklist
+
+- [ ] Production Convex deployment created and functions pushed (`npx convex deploy`)
+- [ ] Convex dashboard env vars set: `BREAK_GLASS_CODE` (required), `CATECHIST_ACCOUNT_PREFIX`/`STUDENT_ACCOUNT_PREFIX` (optional, recommend non-default values — see §17.4.1)
+- [ ] Frontend host has `VITE_CONVEX_URL`, `VITE_CONVEX_SITE_URL` set to the **production** Convex deployment (not `dev:`)
+- [ ] Locale env vars (`VITE_DEFAULT_TIMEZONE`, `VITE_DEFAULT_LOCALE`) set for your target audience
+- [ ] First-run org setup (`/setup` route, `convex/setup.ts`) completed against production data — creates the initial admin account and `appConfig` row
+- [ ] `.env.local` is **not** committed and is not what production reads from — production config lives in the host's env var settings
+- [ ] Confirm `npm run build` succeeds locally before pushing — it also runs `tsc --noEmit`, so a build failure often means a type error, not a deploy config issue
+
+### 17.8 Sentry (Error Monitoring)
+
+This app reports errors to [Sentry](https://sentry.io). Set these alongside the `VITE_*` vars in §17.5:
+
+- **`VITE_SENTRY_DSN`** — frontend build/runtime env. Client-side DSN errors are sent to. Optional but recommended in production — without it, frontend errors go unreported and unnoticed.
+- **`SENTRY_ORG`** / **`SENTRY_PROJECT`** — CI/build env. Org and project slugs Sentry uses to associate uploaded source maps with your Sentry project, so stack traces resolve to real source instead of minified bundles.
+- **`SENTRY_AUTH_TOKEN`** — CI/build env, **secret**. Authorizes the source-map upload step during `npm run build`. Never put it in `.env.local` or commit it — store it as a CI/host secret only.
+
+`SENTRY_ORG`/`SENTRY_PROJECT`/`SENTRY_AUTH_TOKEN` only matter if your build pipeline uploads source maps; skip them and Sentry still captures errors, just with minified stack traces.

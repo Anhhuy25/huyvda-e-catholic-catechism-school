@@ -1,0 +1,352 @@
+import * as React from 'react'
+import { useAction } from 'convex/react'
+import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
+import { api } from '../../../convex/_generated/api'
+import {
+  GUARDIAN_CONTACT_SLOT_COUNT,
+  GUARDIAN_SLOT_COUNT,
+  SACRAMENT_TYPES,
+} from './csvFieldDefinitions'
+import type { ContactType, SacramentType } from './csvFieldDefinitions'
+import type { Id } from '../../../convex/_generated/dataModel'
+import type { ImportRowResult } from '~/routes/_authenticated/_catechist/_admin/import'
+import type { ValidatedRow } from './useImportParser'
+import { Button } from '~/components/ui/button'
+import { Progress, ProgressLabel } from '~/components/ui/progress'
+import { cn } from '~/lib/utils'
+
+const CHUNK_SIZE = 50
+
+interface ImportStep6ImportProps {
+  validatedRows: Array<ValidatedRow>
+  target: 'students' | 'catechists'
+  classYearId?: string
+  relationshipBySlot: Record<number, string>
+  contactTypeByField: Record<string, ContactType>
+  requesterId: Id<'catechists'>
+  onComplete: (results: Array<ImportRowResult>) => void
+}
+
+type StudentRecord = {
+  fullName: string
+  saintName?: string
+  dateOfBirth?: string
+  gender?: 'male' | 'female'
+  previousParish?: string
+  previousDiocese?: string
+  fullAddress?: string
+  isActive?: boolean
+  guardians?: Array<{
+    fullName: string
+    saintName?: string
+    relationship: string
+    contacts: Array<{ type: ContactType; value: string }>
+  }>
+  sacraments?: Array<{
+    sacramentType: SacramentType
+    receivedDate?: string
+    receivedPlace?: string
+    feastName?: string
+    sponsorName?: string
+  }>
+}
+
+type CatechistRecord = {
+  fullName: string
+  saintName?: string
+  dateOfBirth?: string
+  gender?: 'male' | 'female'
+  joinedDate?: string
+  title?: string
+  community?: string
+  level?: string
+  notes?: string
+  phone?: string
+  email?: string
+}
+
+function buildStudentRecord(
+  coerced: Record<string, string | null>,
+  relationshipBySlot: Record<number, string>,
+  contactTypeByField: Record<string, ContactType>,
+): StudentRecord {
+  const record: StudentRecord = {
+    fullName: coerced.fullName ?? '',
+  }
+  if (coerced.saintName) record.saintName = coerced.saintName
+  if (coerced.dateOfBirth) record.dateOfBirth = coerced.dateOfBirth
+  if (coerced.gender === 'male' || coerced.gender === 'female') {
+    record.gender = coerced.gender
+  }
+  if (coerced.previousParish) record.previousParish = coerced.previousParish
+  if (coerced.previousDiocese) record.previousDiocese = coerced.previousDiocese
+  if (coerced.fullAddress) record.fullAddress = coerced.fullAddress
+  if (coerced.isActive) record.isActive = coerced.isActive === 'true'
+
+  const guardians: NonNullable<StudentRecord['guardians']> = []
+  for (let slot = 1; slot <= GUARDIAN_SLOT_COUNT; slot++) {
+    const name = coerced[`guardian${slot}_name`]
+    if (!name) continue
+
+    const contacts: Array<{ type: ContactType; value: string }> = []
+    for (let c = 1; c <= GUARDIAN_CONTACT_SLOT_COUNT; c++) {
+      const fieldKey = `guardian${slot}_contact_${c}`
+      const value = coerced[fieldKey]
+      if (!value) continue
+      contacts.push({
+        type: contactTypeByField[fieldKey] ?? 'other',
+        value,
+      })
+    }
+
+    const guardian: NonNullable<StudentRecord['guardians']>[number] = {
+      fullName: name,
+      relationship: relationshipBySlot[slot] ?? '',
+      contacts,
+    }
+    const saintName = coerced[`guardian${slot}_saint_name`]
+    if (saintName) guardian.saintName = saintName
+
+    guardians.push(guardian)
+  }
+  if (guardians.length > 0) record.guardians = guardians
+
+  const sacraments: NonNullable<StudentRecord['sacraments']> = []
+  for (const sacramentType of SACRAMENT_TYPES) {
+    const receivedDate = coerced[`sacrament_${sacramentType}_receivedDate`]
+    const receivedPlace = coerced[`sacrament_${sacramentType}_receivedPlace`]
+    const feastName = coerced[`sacrament_${sacramentType}_feastName`]
+    const sponsorName = coerced[`sacrament_${sacramentType}_sponsorName`]
+    if (!receivedDate && !receivedPlace && !feastName && !sponsorName) continue
+
+    const sacrament: NonNullable<StudentRecord['sacraments']>[number] = {
+      sacramentType,
+    }
+    if (receivedDate) sacrament.receivedDate = receivedDate
+    if (receivedPlace) sacrament.receivedPlace = receivedPlace
+    if (feastName) sacrament.feastName = feastName
+    if (sponsorName) sacrament.sponsorName = sponsorName
+    sacraments.push(sacrament)
+  }
+  if (sacraments.length > 0) record.sacraments = sacraments
+
+  return record
+}
+
+function buildCatechistRecord(
+  coerced: Record<string, string | null>,
+): CatechistRecord {
+  const record: CatechistRecord = {
+    fullName: coerced.fullName ?? '',
+  }
+  if (coerced.saintName) record.saintName = coerced.saintName
+  if (coerced.dateOfBirth) record.dateOfBirth = coerced.dateOfBirth
+  if (coerced.gender === 'male' || coerced.gender === 'female') {
+    record.gender = coerced.gender
+  }
+  if (coerced.joinedDate) record.joinedDate = coerced.joinedDate
+  if (coerced.title) record.title = coerced.title
+  if (coerced.community) record.community = coerced.community
+  if (coerced.level) record.level = coerced.level
+  if (coerced.notes) record.notes = coerced.notes
+  if (coerced.phone) record.phone = coerced.phone
+  if (coerced.email) record.email = coerced.email
+  return record
+}
+
+function chunk<T>(items: Array<T>, size: number): Array<Array<T>> {
+  const chunks: Array<Array<T>> = []
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size))
+  }
+  return chunks
+}
+
+export function ImportStep6Import({
+  validatedRows,
+  target,
+  classYearId,
+  relationshipBySlot,
+  contactTypeByField,
+  requesterId,
+  onComplete,
+}: ImportStep6ImportProps) {
+  const { t } = useTranslation()
+  const bulkImportStudents = useAction(api.csvImport.bulkImportStudents)
+  const bulkImportCatechists = useAction(api.csvImport.bulkImportCatechists)
+
+  const [currentBatch, setCurrentBatch] = React.useState(0)
+  const [importing, setImporting] = React.useState(true)
+  const hasStartedRef = React.useRef(false)
+
+  const importableRows = React.useMemo(
+    () =>
+      validatedRows.filter((r) => r.status !== 'error' && r.selected !== false),
+    [validatedRows],
+  )
+  const skippedCount = React.useMemo(
+    () =>
+      validatedRows.filter((r) => r.status === 'error' && r.selected !== false)
+        .length,
+    [validatedRows],
+  )
+  const batches = React.useMemo(
+    () => chunk(importableRows, CHUNK_SIZE),
+    [importableRows],
+  )
+
+  React.useEffect(() => {
+    if (hasStartedRef.current) return
+    hasStartedRef.current = true
+
+    async function run() {
+      const results: Array<ImportRowResult> = []
+
+      // Errored rows are skipped entirely — surface as skipped errors in the
+      // final result set so the summary accounts for every original row.
+      for (const row of validatedRows) {
+        if (row.status === 'error' && row.selected !== false) {
+          results.push({
+            index: row.rowIndex,
+            status: 'error',
+            error: t(
+              'csvImport.importing.rowSkipped',
+              'Skipped due to validation errors',
+            ),
+          })
+        }
+      }
+
+      for (let b = 0; b < batches.length; b++) {
+        const batch = batches[b]
+        setCurrentBatch(b + 1)
+
+        const records = batch.map((row) =>
+          target === 'students'
+            ? buildStudentRecord(
+                row.coerced,
+                relationshipBySlot,
+                contactTypeByField,
+              )
+            : buildCatechistRecord(row.coerced),
+        )
+
+        try {
+          const batchResults =
+            target === 'students'
+              ? await bulkImportStudents({
+                  requesterId,
+                  classYearId: classYearId as Id<'classYears'> | undefined,
+                  records: records,
+                })
+              : await bulkImportCatechists({
+                  requesterId,
+                  records: records,
+                })
+
+          batchResults.forEach((res, localIndex) => {
+            const originalRow = batch[localIndex]
+            if (res.status === 'ok') {
+              results.push({
+                index: originalRow.rowIndex,
+                status: 'ok',
+                id: res.id,
+              })
+            } else {
+              results.push({
+                index: originalRow.rowIndex,
+                status: 'error',
+                error: res.error,
+              })
+            }
+          })
+        } catch (e) {
+          batch.forEach((row) => {
+            results.push({
+              index: row.rowIndex,
+              status: 'error',
+              error: String(e),
+            })
+          })
+        }
+      }
+
+      setImporting(false)
+      toast.success(
+        t('csvImport.importing.success', 'Imported {{count}} records', {
+          count: results.filter((r) => r.status === 'ok').length,
+        }),
+      )
+      onComplete(results)
+    }
+
+    void run()
+  }, [])
+
+  const [animatedProgress, setAnimatedProgress] = React.useState(0)
+
+  // Continuously animate progress bar while importing is active
+  React.useEffect(() => {
+    if (!importing) {
+      setAnimatedProgress(100)
+      return
+    }
+
+    let animationFrameId: number
+    const animate = () => {
+      setAnimatedProgress((prev) => {
+        // Cap crawling progress at 95% while active until finished
+        if (prev >= 95) return 95
+        // Gradually slow down as it gets closer to 95%
+        const increment = Math.max(0.05, (95 - prev) * 0.008)
+        return prev + increment
+      })
+      animationFrameId = requestAnimationFrame(animate)
+    }
+
+    animationFrameId = requestAnimationFrame(animate)
+    return () => cancelAnimationFrame(animationFrameId)
+  }, [importing])
+
+  return (
+    <div className="flex flex-col gap-6 items-center py-8">
+      <p className="text-sm text-muted-foreground">
+        {importing
+          ? t('csvImport.importing.inProgress', 'Importing records…')
+          : t('csvImport.importing.done', 'Import complete')}
+      </p>
+
+      <div className="w-full max-w-md flex flex-col gap-2">
+        <Progress
+          value={Math.round(animatedProgress)}
+          className={cn(
+            importing && '[&_[data-slot=progress-indicator]]:animate-pulse',
+          )}
+        >
+          <ProgressLabel>
+            {t('csvImport.importing.batch', 'Batch {{current}} / {{total}}', {
+              current: currentBatch,
+              total: batches.length,
+            })}
+          </ProgressLabel>
+        </Progress>
+        {skippedCount > 0 && (
+          <p className="text-xs text-center text-muted-foreground">
+            {t(
+              'csvImport.importing.skippedNote',
+              '{{count}} rows skipped due to validation errors',
+              { count: skippedCount },
+            )}
+          </p>
+        )}
+      </div>
+
+      <div className="w-full flex justify-start pt-4 border-t">
+        <Button type="button" variant="outline" disabled>
+          {t('common.back', 'Back')}
+        </Button>
+      </div>
+    </div>
+  )
+}

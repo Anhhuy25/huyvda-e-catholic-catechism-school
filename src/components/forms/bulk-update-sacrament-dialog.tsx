@@ -1,0 +1,417 @@
+import { useEffect, useMemo } from 'react'
+import { useForm } from '@tanstack/react-form'
+import { useTranslation } from 'react-i18next'
+import { useMutation, useQuery } from 'convex/react'
+import { toast } from 'sonner'
+import { z } from 'zod'
+import { api } from '../../../convex/_generated/api'
+import type { Doc, Id } from '../../../convex/_generated/dataModel'
+import { useAuth } from '~/lib/auth'
+import { formatPersonName } from '~/lib/name'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '~/components/ui/dialog'
+import { Button } from '~/components/ui/button'
+import {
+  Field,
+  FieldContent,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from '~/components/ui/field'
+import { Input } from '~/components/ui/input'
+import { Checkbox } from '~/components/ui/checkbox'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '~/components/ui/select'
+import { ScrollArea } from '~/components/ui/scroll-area'
+
+type SacramentType =
+  'baptism' | 'first_confession' | 'first_communion' | 'confirmation'
+
+interface StudentRow {
+  enrollment: {
+    _id: Id<'studentClasses'>
+    status: 'active' | 'on_leave' | 'withdrawn'
+    enrolledDate: string
+  }
+  student: Doc<'students'> | null
+}
+
+interface BulkUpdateSacramentDialogProps {
+  isOpen: boolean
+  onOpenChange: (open: boolean) => void
+  classYearId: Id<'classYears'>
+  className: string
+  students: Array<StudentRow>
+}
+
+export function BulkUpdateSacramentDialog({
+  isOpen,
+  onOpenChange,
+  classYearId,
+  className,
+  students,
+}: BulkUpdateSacramentDialogProps) {
+  const { t } = useTranslation()
+  const { user } = useAuth()
+  const requesterId = user?.userDocId as Id<'catechists'> | undefined
+  const appConfig = useQuery(api.appConfig.get)
+  const defaultPlace = appConfig
+    ? [appConfig.parishName, appConfig.dioceseName].filter(Boolean).join(', ')
+    : ''
+
+  const handleMissingRequester = () => {
+    toast.error(t('common.unauthorized'))
+  }
+
+  const bulkUpdateMutation = useMutation(
+    api.students.bulkUpdateStudentSacraments,
+  )
+
+  const activeStudents = students.filter(
+    (s) => s.student !== null && s.enrollment.status === 'active',
+  )
+
+  const sortedStudents = useMemo(() => {
+    const nameFormat = appConfig?.nameFormat
+    return [...activeStudents].sort((a, b) => {
+      const nameA = a.student!.fullName
+      const nameB = b.student!.fullName
+
+      if (nameFormat === 'firstName_lastName') {
+        return nameA
+          .toLocaleLowerCase()
+          .localeCompare(nameB.toLocaleLowerCase())
+      }
+
+      const lastNameA = nameA.split(' ').pop() || ''
+      const lastNameB = nameB.split(' ').pop() || ''
+
+      return lastNameA
+        .toLocaleLowerCase()
+        .localeCompare(lastNameB.toLocaleLowerCase())
+    })
+  }, [activeStudents, appConfig?.nameFormat])
+
+  const formSchema = useMemo(
+    () =>
+      z.object({
+        sacramentType: z
+          .enum([
+            'baptism',
+            'first_confession',
+            'first_communion',
+            'confirmation',
+            '',
+          ])
+          .refine((v) => v !== '', {
+            message: t('classes.sacraments.bulkUpdate.selectSacramentRequired'),
+          }),
+        receivedDate: z.string().min(1, t('common.required')),
+        place: z.string(),
+        studentIds: z
+          .array(z.custom<Id<'students'>>())
+          .min(1, t('classes.sacraments.bulkUpdate.noStudentsSelected')),
+      }),
+    [t],
+  )
+
+  const form = useForm({
+    defaultValues: {
+      sacramentType: '' as SacramentType | '',
+      receivedDate: new Date().toLocaleDateString('sv-SE'),
+      place: '',
+      studentIds: [] as Array<Id<'students'>>,
+    },
+    validators: {
+      onSubmit: formSchema,
+    },
+    onSubmit: async ({ value }) => {
+      if (!requesterId) {
+        handleMissingRequester()
+        return
+      }
+
+      try {
+        await bulkUpdateMutation({
+          requesterId,
+          classYearId,
+          studentIds: value.studentIds,
+          sacramentType: value.sacramentType as SacramentType,
+          receivedDate: value.receivedDate,
+          receivedPlace: value.place || undefined,
+        })
+        toast.success(t('classes.sacraments.bulkUpdate.success'))
+        form.reset()
+        onOpenChange(false)
+      } catch {
+        toast.error(t('classes.sacraments.bulkUpdate.error'))
+      }
+    },
+  })
+
+  // Handle Ctrl+Enter or Cmd+Enter to submit
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault()
+        form.handleSubmit()
+      }
+    }
+
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown)
+      return () => window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isOpen, form])
+
+  const sacramentItems = [
+    { value: 'baptism', label: t('students.sacraments.baptism') },
+    {
+      value: 'first_confession',
+      label: t('students.sacraments.first_confession'),
+    },
+    {
+      value: 'first_communion',
+      label: t('students.sacraments.first_communion'),
+    },
+    { value: 'confirmation', label: t('students.sacraments.confirmation') },
+  ]
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>
+            {t('classes.sacraments.bulkUpdate.title')} - {className}
+          </DialogTitle>
+        </DialogHeader>
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            form.handleSubmit()
+          }}
+          className="flex flex-col gap-6"
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <form.Field
+              name="sacramentType"
+              children={(field) => {
+                const isInvalid =
+                  field.state.meta.isTouched && !field.state.meta.isValid
+                return (
+                  <Field data-invalid={isInvalid}>
+                    <FieldLabel htmlFor="sacrament-type">
+                      {t('classes.sacraments.bulkUpdate.selectSacrament')}{' '}
+                      <span className="text-destructive">*</span>
+                    </FieldLabel>
+                    <Select
+                      value={field.state.value}
+                      onValueChange={(val) =>
+                        field.handleChange(val as SacramentType)
+                      }
+                      items={sacramentItems}
+                    >
+                      <SelectTrigger id="sacrament-type" className="w-full">
+                        <SelectValue
+                          placeholder={t(
+                            'classes.sacraments.bulkUpdate.selectSacramentPlaceholder',
+                          )}
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {sacramentItems.map((item) => (
+                          <SelectItem key={item.value} value={item.value}>
+                            {item.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {isInvalid && (
+                      <FieldError errors={field.state.meta.errors} />
+                    )}
+                  </Field>
+                )
+              }}
+            />
+
+            <form.Field
+              name="receivedDate"
+              children={(field) => {
+                const isInvalid =
+                  field.state.meta.isTouched && !field.state.meta.isValid
+                return (
+                  <Field data-invalid={isInvalid}>
+                    <FieldLabel htmlFor="received-date">
+                      {t('classes.sacraments.bulkUpdate.receivedDate')}{' '}
+                      <span className="text-destructive">*</span>
+                    </FieldLabel>
+                    <Input
+                      id="received-date"
+                      name={field.name}
+                      type="date"
+                      value={field.state.value}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      onBlur={field.handleBlur}
+                      aria-invalid={isInvalid}
+                    />
+                    {isInvalid && (
+                      <FieldError errors={field.state.meta.errors} />
+                    )}
+                  </Field>
+                )
+              }}
+            />
+
+            <form.Field
+              name="place"
+              children={(field) => {
+                const isInvalid =
+                  field.state.meta.isTouched && !field.state.meta.isValid
+                return (
+                  <Field data-invalid={isInvalid}>
+                    <FieldLabel htmlFor="sacrament-place">
+                      {t('students.sacraments.receivedPlace')}
+                    </FieldLabel>
+                    <Input
+                      id="sacrament-place"
+                      name={field.name}
+                      placeholder={defaultPlace}
+                      value={field.state.value}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      onBlur={field.handleBlur}
+                      aria-invalid={isInvalid}
+                    />
+                    {isInvalid && (
+                      <FieldError errors={field.state.meta.errors} />
+                    )}
+                  </Field>
+                )
+              }}
+            />
+          </div>
+
+          <form.Field
+            name="studentIds"
+            children={(field) => {
+              const isInvalid =
+                field.state.meta.isTouched && !field.state.meta.isValid
+              const selectedIds = field.state.value
+              const toggleStudent = (id: Id<'students'>) => {
+                if (selectedIds.includes(id)) {
+                  field.handleChange(selectedIds.filter((x) => x !== id))
+                } else {
+                  field.handleChange([...selectedIds, id])
+                }
+              }
+
+              const toggleAll = () => {
+                if (selectedIds.length === sortedStudents.length) {
+                  field.handleChange([])
+                } else {
+                  field.handleChange(sortedStudents.map((s) => s.student!._id))
+                }
+              }
+
+              const isAllChecked =
+                sortedStudents.length > 0 &&
+                selectedIds.length === sortedStudents.length
+
+              return (
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between border-b pb-2 mb-1">
+                    <FieldLabel className="mb-0">
+                      {t('classes.enrollment.selectStudents')}{' '}
+                      <span className="text-destructive">*</span>
+                    </FieldLabel>
+                    <span className="text-xs text-muted-foreground font-medium">
+                      {selectedIds.length} / {sortedStudents.length}
+                    </span>
+                  </div>
+
+                  <Field orientation="horizontal">
+                    <Checkbox
+                      id="select-all-students"
+                      checked={isAllChecked}
+                      onCheckedChange={toggleAll}
+                    />
+                    <FieldContent>
+                      <FieldLabel htmlFor="select-all-students">
+                        {t('classes.sacraments.bulkUpdate.selectAll')}
+                      </FieldLabel>
+                    </FieldContent>
+                  </Field>
+
+                  <div className="border rounded-lg overflow-hidden bg-card">
+                    <ScrollArea className="h-60 p-2">
+                      <FieldGroup>
+                        {sortedStudents.length === 0 ? (
+                          <div className="text-center py-8 text-sm text-muted-foreground">
+                            {t('classes.enrollment.noStudents')}
+                          </div>
+                        ) : (
+                          sortedStudents.map((row) => {
+                            const student = row.student!
+                            const id = student._id
+                            const isChecked = selectedIds.includes(id)
+
+                            return (
+                              <Field key={id} orientation={'horizontal'}>
+                                <Checkbox
+                                  id={`student-${id}`}
+                                  checked={isChecked}
+                                  onCheckedChange={() => toggleStudent(id)}
+                                />
+                                <FieldLabel htmlFor={`student-${id}`}>
+                                  <span className="text-sm font-medium text-foreground">
+                                    {formatPersonName(
+                                      student.saintName,
+                                      student.fullName,
+                                    )}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground font-mono">
+                                    {t('students.col.studentCode')}:{' '}
+                                    {student.studentCode}
+                                  </span>
+                                </FieldLabel>
+                              </Field>
+                            )
+                          })
+                        )}
+                      </FieldGroup>
+                    </ScrollArea>
+                  </div>
+
+                  {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                </div>
+              )
+            }}
+          />
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => onOpenChange(false)}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button type="submit">
+              {t('classes.sacraments.bulkUpdate.submit')}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}

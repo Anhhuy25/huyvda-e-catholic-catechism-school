@@ -1,0 +1,678 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { useMutation, useQuery } from 'convex/react'
+import { toast } from 'sonner'
+import { EnrollmentDialog } from './enrollment-dialog'
+import type { Id } from '../../../convex/_generated/dataModel'
+
+// Mock Convex hooks
+vi.mock('convex/react', () => ({
+  useQuery: vi.fn(),
+  useMutation: vi.fn(),
+}))
+
+// Mock useAuth
+vi.mock('~/lib/auth', () => ({
+  useAuth: () => ({
+    user: {
+      userDocId: 'catechist123' as Id<'catechists'>,
+    },
+  }),
+}))
+
+// Mock useSelectedAcademicYear
+vi.mock('~/lib/academic-year', () => ({
+  useSelectedAcademicYear: () => ({
+    selectedYearId: 'year123' as Id<'academicYears'>,
+  }),
+}))
+
+// Mock toast
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}))
+
+// Mock translation
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string, options?: { defaultValue?: string }) => {
+      if (options?.defaultValue) return options.defaultValue
+      const map: Record<string, string> = {
+        'classes.enrollment.title': 'Enroll Students',
+        'classes.enrollment.selectStudents': 'Select Students',
+        'classes.enrollment.searchPlaceholder': 'Search by name or code',
+        'classes.enrollment.enrolledIn': 'Enrolled in {{className}}',
+        'classes.enrollment.noStudents': 'No students found',
+        'classes.enrollment.noStudentsSelected':
+          'Please select at least one student',
+        'classes.enrollment.error': 'An error occurred',
+        'classes.enrollment.success': 'Enrollment successful',
+        'classes.enrollment.enrolledDate': 'Enrollment Date',
+        'classes.enrollment.isPrimaryClass': 'Primary Class',
+        'classes.enrollment.submit': 'Enroll',
+        'classes.enrollment.selectedList': 'Selected List',
+        'common.cancel': 'Cancel',
+        'common.delete': 'Delete',
+      }
+      return map[key] || key
+    },
+  }),
+}))
+
+describe('EnrollmentDialog', () => {
+  const mockClassYearId = 'classYear123' as Id<'classYears'>
+  const mockClassName = 'Class 1'
+  const mockOnOpenChange = vi.fn()
+  let mockMutate: any
+
+  const mockStudents = [
+    {
+      _id: 'student1' as Id<'students'>,
+      studentCode: 'S001',
+      fullName: 'John Doe',
+      saintName: 'John',
+      isActive: true,
+      createdAt: 0,
+      isDeleted: false,
+      enrolledClassYearId: null,
+      className: null,
+      isPrimaryClass: false,
+      status: null,
+    },
+    {
+      _id: 'student2' as Id<'students'>,
+      studentCode: 'S002',
+      fullName: 'Jane Smith',
+      saintName: 'Jane',
+      isActive: true,
+      createdAt: 0,
+      isDeleted: false,
+      enrolledClassYearId: 'otherClass' as Id<'classYears'>,
+      className: 'Other Class',
+      isPrimaryClass: true,
+      status: 'active' as const,
+    },
+    {
+      _id: 'student3' as Id<'students'>,
+      studentCode: 'S003',
+      fullName: 'Bob Johnson',
+      saintName: 'Bob',
+      isActive: true,
+      createdAt: 0,
+      isDeleted: false,
+      enrolledClassYearId: null,
+      className: null,
+      isPrimaryClass: false,
+      status: null,
+    },
+  ]
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockMutate = vi.fn().mockResolvedValue(['enrollment1'])
+    vi.mocked(useQuery).mockReturnValue(mockStudents as any)
+    vi.mocked(useMutation).mockReturnValue(mockMutate)
+  })
+
+  test('renders dialog layout with combobox label and selection table', () => {
+    render(
+      <EnrollmentDialog
+        isOpen={true}
+        onOpenChange={mockOnOpenChange}
+        classYearId={mockClassYearId}
+        className={mockClassName}
+      />,
+    )
+
+    expect(screen.getByText(/Select Students/i)).toBeInTheDocument()
+    expect(screen.getByText(/Selected List/i)).toBeInTheDocument()
+    expect(
+      screen.getByText(/Please select at least one student/i),
+    ).toBeInTheDocument()
+  })
+
+  test('displays class name in title', () => {
+    render(
+      <EnrollmentDialog
+        isOpen={true}
+        onOpenChange={mockOnOpenChange}
+        classYearId={mockClassYearId}
+        className={mockClassName}
+      />,
+    )
+
+    expect(screen.getByText(/Class 1/)).toBeInTheDocument()
+  })
+
+  test('allows date input', () => {
+    render(
+      <EnrollmentDialog
+        isOpen={true}
+        onOpenChange={mockOnOpenChange}
+        classYearId={mockClassYearId}
+        className={mockClassName}
+      />,
+    )
+
+    const dateInput = screen.getByDisplayValue(/2026/)
+    expect(dateInput).toBeInTheDocument()
+    expect(dateInput).toHaveAttribute('type', 'date')
+  })
+
+  test('uses default isPrimary=true when prop is not provided', async () => {
+    render(
+      <EnrollmentDialog
+        isOpen={true}
+        onOpenChange={mockOnOpenChange}
+        classYearId={mockClassYearId}
+        className={mockClassName}
+        defaultStudentIds={['student1' as Id<'students'>]}
+      />,
+    )
+
+    const enrollButton = screen.getByRole('button', { name: /enroll$/i })
+    fireEvent.click(enrollButton)
+
+    await waitFor(() => {
+      expect(mockMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          isPrimaryClass: true,
+        }),
+      )
+    })
+  })
+
+  test('submits form button exists', () => {
+    render(
+      <EnrollmentDialog
+        isOpen={true}
+        onOpenChange={mockOnOpenChange}
+        classYearId={mockClassYearId}
+        className={mockClassName}
+      />,
+    )
+
+    const enrollButton = screen.getByRole('button', { name: /enroll$/i })
+    expect(enrollButton).toBeInTheDocument()
+  })
+
+  test('handles Ctrl+Enter keyboard shortcut', async () => {
+    render(
+      <EnrollmentDialog
+        isOpen={true}
+        onOpenChange={mockOnOpenChange}
+        classYearId={mockClassYearId}
+        className={mockClassName}
+        defaultStudentIds={['student1' as Id<'students'>]}
+      />,
+    )
+
+    fireEvent.keyDown(window, {
+      key: 'Enter',
+      ctrlKey: true,
+      bubbles: true,
+    })
+
+    // Ctrl+Enter should trigger form.handleSubmit(), submitting the form
+    await waitFor(() => {
+      expect(mockMutate).toHaveBeenCalled()
+    })
+  })
+
+  test('has cancel button', () => {
+    render(
+      <EnrollmentDialog
+        isOpen={true}
+        onOpenChange={mockOnOpenChange}
+        classYearId={mockClassYearId}
+        className={mockClassName}
+      />,
+    )
+
+    const cancelButton = screen.getByRole('button', { name: /cancel/i })
+    expect(cancelButton).toBeInTheDocument()
+    fireEvent.click(cancelButton)
+    expect(mockOnOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  test('shows preselected student in table and allows removal', () => {
+    render(
+      <EnrollmentDialog
+        isOpen={true}
+        onOpenChange={mockOnOpenChange}
+        classYearId={mockClassYearId}
+        className={mockClassName}
+        defaultStudentIds={['student1' as Id<'students'>]}
+      />,
+    )
+
+    // Verify student is in table
+    expect(screen.getByText(/John Doe/)).toBeInTheDocument()
+
+    // Find and click remove button (the button that has role button and name Delete)
+    const removeBtn = screen.getByRole('button', { name: /delete/i })
+    fireEvent.click(removeBtn)
+
+    // Student should be removed from list
+    expect(screen.queryByText(/John Doe/)).not.toBeInTheDocument()
+  })
+
+  test('submits successfully with preselected students', async () => {
+    render(
+      <EnrollmentDialog
+        isOpen={true}
+        onOpenChange={mockOnOpenChange}
+        classYearId={mockClassYearId}
+        className={mockClassName}
+        defaultStudentIds={['student1' as Id<'students'>]}
+      />,
+    )
+
+    const enrollButton = screen.getByRole('button', { name: /enroll$/i })
+    fireEvent.click(enrollButton)
+
+    await waitFor(() => {
+      expect(mockMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requesterId: 'catechist123',
+          studentIds: ['student1'],
+          classYearId: mockClassYearId,
+          isPrimaryClass: true,
+        }),
+      )
+      expect(toast.success).toHaveBeenCalledWith('Enrollment successful')
+      expect(mockOnOpenChange).toHaveBeenCalledWith(false)
+    })
+  })
+
+  test('shows validation error on empty submit', async () => {
+    render(
+      <EnrollmentDialog
+        isOpen={true}
+        onOpenChange={mockOnOpenChange}
+        classYearId={mockClassYearId}
+        className={mockClassName}
+      />,
+    )
+
+    const enrollButton = screen.getByRole('button', { name: /enroll$/i })
+    fireEvent.click(enrollButton)
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Please select at least one student'),
+      ).toBeInTheDocument()
+      expect(mockMutate).not.toHaveBeenCalled()
+    })
+  })
+
+  test('returns null when eligible students are not loaded', () => {
+    vi.mocked(useQuery).mockReturnValue(undefined as any)
+
+    const { container } = render(
+      <EnrollmentDialog
+        isOpen={true}
+        onOpenChange={mockOnOpenChange}
+        classYearId={mockClassYearId}
+        className={mockClassName}
+      />,
+    )
+
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  test('returns null when eligible students is not an array', () => {
+    vi.mocked(useQuery).mockReturnValue({} as any)
+
+    const { container } = render(
+      <EnrollmentDialog
+        isOpen={true}
+        onOpenChange={mockOnOpenChange}
+        classYearId={mockClassYearId}
+        className={mockClassName}
+      />,
+    )
+
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  test('selecting a student from combobox adds them with enrolled badge shown', async () => {
+    render(
+      <EnrollmentDialog
+        isOpen={true}
+        onOpenChange={mockOnOpenChange}
+        classYearId={mockClassYearId}
+        className={mockClassName}
+      />,
+    )
+
+    const comboboxInput = screen.getByPlaceholderText(/search by name or code/i)
+    fireEvent.mouseDown(comboboxInput)
+
+    const option = await screen.findByText(/Jane Smith/)
+
+    // Enrolled badge for Jane Smith (already primary-enrolled in Other Class)
+    expect(screen.getByText(/Enrolled in/i)).toBeInTheDocument()
+
+    fireEvent.pointerDown(option)
+    fireEvent.click(option)
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/Jane Smith/).length).toBeGreaterThan(0)
+    })
+  })
+
+  test('passes isPrimary=false to mutation when prop is set to false', async () => {
+    render(
+      <EnrollmentDialog
+        isOpen={true}
+        onOpenChange={mockOnOpenChange}
+        classYearId={mockClassYearId}
+        className={mockClassName}
+        defaultStudentIds={['student1' as Id<'students'>]}
+        isPrimary={false}
+      />,
+    )
+
+    const enrollButton = screen.getByRole('button', { name: /enroll$/i })
+    fireEvent.click(enrollButton)
+
+    await waitFor(() => {
+      expect(mockMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          isPrimaryClass: false,
+        }),
+      )
+    })
+  })
+
+  test('changing enrolled date updates the input value', () => {
+    render(
+      <EnrollmentDialog
+        isOpen={true}
+        onOpenChange={mockOnOpenChange}
+        classYearId={mockClassYearId}
+        className={mockClassName}
+      />,
+    )
+
+    const dateInput = screen.getByDisplayValue(/2026/)
+    fireEvent.change(dateInput, { target: { value: '2026-01-15' } })
+    expect(dateInput).toHaveValue('2026-01-15')
+  })
+
+  test('does not respond to plain Enter without ctrl/meta', () => {
+    render(
+      <EnrollmentDialog
+        isOpen={true}
+        onOpenChange={mockOnOpenChange}
+        classYearId={mockClassYearId}
+        className={mockClassName}
+      />,
+    )
+
+    fireEvent.keyDown(window, {
+      key: 'Enter',
+      ctrlKey: false,
+      metaKey: false,
+      bubbles: true,
+    })
+
+    expect(mockMutate).not.toHaveBeenCalled()
+  })
+
+  test('does not attach keydown listener when dialog is closed', () => {
+    render(
+      <EnrollmentDialog
+        isOpen={false}
+        onOpenChange={mockOnOpenChange}
+        classYearId={mockClassYearId}
+        className={mockClassName}
+      />,
+    )
+
+    const event = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      ctrlKey: true,
+      bubbles: true,
+    })
+    fireEvent.keyDown(window, event)
+
+    expect(mockMutate).not.toHaveBeenCalled()
+  })
+
+  test('handles mutation failure', async () => {
+    mockMutate.mockRejectedValueOnce(new Error('Mutation rejected'))
+
+    render(
+      <EnrollmentDialog
+        isOpen={true}
+        onOpenChange={mockOnOpenChange}
+        classYearId={mockClassYearId}
+        className={mockClassName}
+        defaultStudentIds={['student1' as Id<'students'>]}
+      />,
+    )
+
+    const enrollButton = screen.getByRole('button', { name: /enroll$/i })
+    fireEvent.click(enrollButton)
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('An error occurred')
+      expect(mockOnOpenChange).not.toHaveBeenCalledWith(false)
+    })
+  })
+
+  test('handles Cmd+Enter (metaKey) keyboard shortcut', async () => {
+    render(
+      <EnrollmentDialog
+        isOpen={true}
+        onOpenChange={mockOnOpenChange}
+        classYearId={mockClassYearId}
+        className={mockClassName}
+        defaultStudentIds={['student1' as Id<'students'>]}
+      />,
+    )
+
+    fireEvent.keyDown(window, {
+      key: 'Enter',
+      metaKey: true,
+      bubbles: true,
+    })
+
+    // Cmd+Enter should trigger form.handleSubmit(), submitting the form
+    await waitFor(() => {
+      expect(mockMutate).toHaveBeenCalled()
+    })
+  })
+
+  test('handles dialog closing via onOpenChange', () => {
+    render(
+      <EnrollmentDialog
+        isOpen={true}
+        onOpenChange={mockOnOpenChange}
+        classYearId={mockClassYearId}
+        className={mockClassName}
+      />,
+    )
+
+    const cancelButton = screen.getByRole('button', { name: /cancel/i })
+    fireEvent.click(cancelButton)
+    expect(mockOnOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  test('displays enrolled badge only when student has both enrolledClassYearId and isPrimaryClass', async () => {
+    const studentsWithVariousEnrollmentStates = [
+      {
+        _id: 'student1' as Id<'students'>,
+        studentCode: 'S001',
+        fullName: 'No Enrollment',
+        saintName: 'John',
+        isActive: true,
+        createdAt: 0,
+        isDeleted: false,
+        enrolledClassYearId: null,
+        className: null,
+        isPrimaryClass: false,
+        status: null,
+      },
+      {
+        _id: 'student2' as Id<'students'>,
+        studentCode: 'S002',
+        fullName: 'Has Class But Not Primary',
+        saintName: 'Jane',
+        isActive: true,
+        createdAt: 0,
+        isDeleted: false,
+        enrolledClassYearId: 'otherClass' as Id<'classYears'>,
+        className: 'Other Class',
+        isPrimaryClass: false, // Not primary
+        status: null,
+      },
+      {
+        _id: 'student3' as Id<'students'>,
+        studentCode: 'S003',
+        fullName: 'Primary Enrolled',
+        saintName: 'Bob',
+        isActive: true,
+        createdAt: 0,
+        isDeleted: false,
+        enrolledClassYearId: 'someClass' as Id<'classYears'>,
+        className: 'Some Class',
+        isPrimaryClass: true, // Primary
+        status: null,
+      },
+    ]
+
+    vi.mocked(useQuery).mockReturnValue(
+      studentsWithVariousEnrollmentStates as any,
+    )
+
+    render(
+      <EnrollmentDialog
+        isOpen={true}
+        onOpenChange={mockOnOpenChange}
+        classYearId={mockClassYearId}
+        className={mockClassName}
+      />,
+    )
+
+    // Open combobox to see items
+    const comboboxInput = screen.getByPlaceholderText(/search by name or code/i)
+    fireEvent.mouseDown(comboboxInput)
+
+    // Only student3 should show the enrolled badge in combobox items
+    await waitFor(() => {
+      const enrolledBadges = screen.queryAllByText(/Enrolled in/i)
+      expect(enrolledBadges.length).toBe(1)
+    })
+  })
+
+  test('keyboard listener is not attached when dialog is initially closed', () => {
+    const addEventListenerSpy = vi.spyOn(window, 'addEventListener')
+
+    render(
+      <EnrollmentDialog
+        isOpen={false}
+        onOpenChange={mockOnOpenChange}
+        classYearId={mockClassYearId}
+        className={mockClassName}
+      />,
+    )
+
+    // addEventListener should not be called for keydown when isOpen is false
+    const addedListeners = addEventListenerSpy.mock.calls.filter(
+      (call) => call[0] === 'keydown',
+    )
+    expect(addedListeners.length).toBe(0)
+
+    addEventListenerSpy.mockRestore()
+  })
+
+  test('properly adds multiple students and allows individual removal', async () => {
+    render(
+      <EnrollmentDialog
+        isOpen={true}
+        onOpenChange={mockOnOpenChange}
+        classYearId={mockClassYearId}
+        className={mockClassName}
+      />,
+    )
+
+    const comboboxInput = screen.getByPlaceholderText(/search by name or code/i)
+
+    // Add first student
+    fireEvent.mouseDown(comboboxInput)
+    let option = await screen.findByText(/John Doe/)
+    fireEvent.pointerDown(option)
+    fireEvent.click(option)
+
+    await waitFor(() => {
+      expect(screen.getByText(/John Doe/)).toBeInTheDocument()
+    })
+
+    // Add second student
+    fireEvent.mouseDown(comboboxInput)
+    option = await screen.findByText(/Bob Johnson/)
+    fireEvent.pointerDown(option)
+    fireEvent.click(option)
+
+    await waitFor(() => {
+      expect(screen.getByText(/Bob Johnson/)).toBeInTheDocument()
+    })
+
+    // Verify both are in the list
+    expect(
+      screen.getAllByText(/John Doe|Bob Johnson/).length,
+    ).toBeGreaterThanOrEqual(2)
+
+    // Remove first student using the first delete button
+    const deleteButtons = screen.getAllByRole('button', { name: /delete/i })
+    fireEvent.click(deleteButtons[0])
+
+    // One should be gone
+    await waitFor(() => {
+      expect(screen.queryByText(/John Doe/)).not.toBeInTheDocument()
+    })
+    expect(screen.getByText(/Bob Johnson/)).toBeInTheDocument()
+  })
+
+  test('form submission includes all fields with correct values', async () => {
+    render(
+      <EnrollmentDialog
+        isOpen={true}
+        onOpenChange={mockOnOpenChange}
+        classYearId={mockClassYearId}
+        className={mockClassName}
+        defaultStudentIds={[
+          'student1' as Id<'students'>,
+          'student3' as Id<'students'>,
+        ]}
+        isPrimary={false}
+      />,
+    )
+
+    // Update enrolled date
+    const dateInput = screen.getByDisplayValue(/2026/)
+    fireEvent.change(dateInput, { target: { value: '2026-03-15' } })
+
+    // Submit
+    const enrollButton = screen.getByRole('button', { name: /enroll$/i })
+    fireEvent.click(enrollButton)
+
+    await waitFor(() => {
+      expect(mockMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requesterId: 'catechist123',
+          studentIds: ['student1', 'student3'],
+          classYearId: mockClassYearId,
+          isPrimaryClass: false,
+          enrolledDate: '2026-03-15',
+        }),
+      )
+    })
+  })
+})

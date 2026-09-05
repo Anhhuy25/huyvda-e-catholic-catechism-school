@@ -1,0 +1,407 @@
+import * as React from 'react'
+import { useForm, useSelector } from '@tanstack/react-form'
+import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
+import { z } from 'zod'
+import type { Id } from '../../../convex/_generated/dataModel'
+import { translateConvexError } from '~/lib/convex-errors'
+import { DEFAULT_TIMEZONE } from '~/lib/locale'
+import { Button } from '~/components/ui/button'
+import { Input } from '~/components/ui/input'
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from '~/components/ui/field'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '~/components/ui/alert-dialog'
+
+interface AcademicYearFormProps {
+  yearId?: Id<'academicYears'>
+  initialValues?: {
+    name: string
+    startDate: string
+    endDate: string
+  }
+  requesterId: Id<'catechists'>
+  createMutation: (args: {
+    requesterId: Id<'catechists'>
+    name: string
+    startDate: string
+    endDate: string
+    timezone: string
+    numberOfSemesters: number
+  }) => Promise<unknown>
+  updateMutation: (args: {
+    requesterId: Id<'catechists'>
+    academicYearId: Id<'academicYears'>
+    name?: string
+    startDate?: string
+    endDate?: string
+    timezone?: string
+  }) => Promise<unknown>
+  onSuccess: () => void
+  onCancel: () => void
+}
+
+const getDefaultStartDate = (): string => {
+  const year = new Date().getFullYear()
+  return `${year}-08-01`
+}
+
+const getDefaultEndDate = (): string => {
+  const year = new Date().getFullYear()
+  const date = new Date(year, 7, 1) // August 1st local time
+  date.setDate(date.getDate() + 365)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+export function AcademicYearForm({
+  yearId,
+  initialValues,
+  requesterId,
+  createMutation,
+  updateMutation,
+  onSuccess,
+  onCancel,
+}: AcademicYearFormProps) {
+  const { t } = useTranslation()
+  const [formDirty, setFormDirty] = React.useState(false)
+  const [confirmLeaveOpen, setConfirmLeaveOpen] = React.useState(false)
+
+  const handleCancel = () => {
+    if (formDirty) {
+      setConfirmLeaveOpen(true)
+    } else {
+      onCancel()
+    }
+  }
+
+  const formSchema = React.useMemo(
+    () =>
+      z
+        .object({
+          name: z.string().trim().min(1, t('common.required')),
+          startDate: z.string().min(1, t('common.required')),
+          endDate: z.string().min(1, t('common.required')),
+          numberOfSemesters: z.custom<number | undefined>(),
+        })
+        .superRefine((data, ctx) => {
+          if (data.startDate && data.endDate) {
+            if (new Date(data.startDate) >= new Date(data.endDate)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['endDate'],
+                message: t('academicYears.fields.endDate.refine'),
+              })
+            }
+          }
+          if (!yearId && data.numberOfSemesters !== undefined) {
+            if (data.numberOfSemesters < 1 || data.numberOfSemesters > 4) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['numberOfSemesters'],
+                message: t('academicYears.fields.numberOfSemesters.error'),
+              })
+            }
+          }
+        }),
+    [t],
+  )
+
+  const form = useForm({
+    defaultValues: {
+      name: initialValues?.name ?? '',
+      startDate:
+        initialValues?.startDate ?? (!yearId ? getDefaultStartDate() : ''),
+      endDate: initialValues?.endDate ?? (!yearId ? getDefaultEndDate() : ''),
+      numberOfSemesters: !yearId ? 2 : undefined,
+    },
+    validators: {
+      onBlur: formSchema,
+      onSubmit: formSchema,
+    },
+    onSubmit: async ({ value }) => {
+      try {
+        if (yearId) {
+          await updateMutation({
+            requesterId,
+            academicYearId: yearId,
+            name: value.name,
+            startDate: value.startDate,
+            endDate: value.endDate,
+            timezone: DEFAULT_TIMEZONE,
+          })
+        } else {
+          await createMutation({
+            requesterId,
+            name: value.name,
+            startDate: value.startDate,
+            endDate: value.endDate,
+            timezone: DEFAULT_TIMEZONE,
+            numberOfSemesters: value.numberOfSemesters!,
+          })
+        }
+        toast.success(t('common.saved'))
+        onSuccess()
+      } catch (err) {
+        toast.error(translateConvexError(err, t, 'academicYears.saveError'))
+      }
+    },
+  })
+
+  const startDate = useSelector(form.store, (s) => s.values.startDate)
+
+  React.useEffect(() => {
+    const currentEndDate = form.getFieldValue('endDate')
+    if (startDate && !currentEndDate) {
+      const date = new Date(startDate)
+      if (!isNaN(date.getTime())) {
+        date.setDate(date.getDate() + 365)
+        const calculatedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+        form.setFieldValue('endDate', calculatedDate)
+      }
+    }
+  }, [startDate, form])
+
+  return (
+    <>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          form.handleSubmit()
+        }}
+        className="flex flex-col gap-6"
+      >
+        <FieldSet>
+          <FieldLegend>
+            {t('academicYears.form.basicInfo', 'Basic Information')}
+          </FieldLegend>
+          <p className="text-sm text-muted-foreground mb-4">
+            {t(
+              'academicYears.form.basicInfo.description',
+              'Enter the name for this academic year.',
+            )}
+          </p>
+          <FieldGroup>
+            <form.Field
+              name="name"
+              children={(field) => {
+                const isInvalid =
+                  field.state.meta.isTouched && !field.state.meta.isValid
+                return (
+                  <Field data-invalid={isInvalid}>
+                    <FieldLabel htmlFor="name">
+                      {t('academicYears.fields.name')}{' '}
+                      <span className="text-destructive">*</span>
+                    </FieldLabel>
+                    <Input
+                      id="name"
+                      name={field.name}
+                      placeholder={t('academicYears.fields.name.placeholder')}
+                      value={field.state.value}
+                      onChange={(e) => {
+                        field.handleChange(e.target.value)
+                        setFormDirty(true)
+                      }}
+                      onBlur={field.handleBlur}
+                      aria-invalid={isInvalid}
+                    />
+                    {isInvalid && (
+                      <FieldError errors={field.state.meta.errors} />
+                    )}
+                  </Field>
+                )
+              }}
+            />
+          </FieldGroup>
+        </FieldSet>
+
+        <FieldSet>
+          <FieldLegend>
+            {t('academicYears.form.dateRange', 'Date Range')}
+          </FieldLegend>
+          <p className="text-sm text-muted-foreground mb-4">
+            {t(
+              'academicYears.form.dateRange.description',
+              'Set the start and end dates for this academic year.',
+            )}
+          </p>
+          <FieldGroup className="grid sm:grid-cols-2 gap-4">
+            <form.Field
+              name="startDate"
+              children={(field) => {
+                const isInvalid =
+                  field.state.meta.isTouched && !field.state.meta.isValid
+                return (
+                  <Field data-invalid={isInvalid}>
+                    <FieldLabel htmlFor="startDate">
+                      {t('academicYears.fields.startDate')}{' '}
+                      <span className="text-destructive">*</span>
+                    </FieldLabel>
+                    <Input
+                      id="startDate"
+                      name={field.name}
+                      type="date"
+                      value={field.state.value}
+                      onChange={(e) => {
+                        field.handleChange(e.target.value)
+                        setFormDirty(true)
+                      }}
+                      onBlur={field.handleBlur}
+                      placeholder={t('academicYears.fields.startDate')}
+                      aria-invalid={isInvalid}
+                    />
+                    {isInvalid && (
+                      <FieldError errors={field.state.meta.errors} />
+                    )}
+                  </Field>
+                )
+              }}
+            />
+
+            <form.Field
+              name="endDate"
+              children={(field) => {
+                const isInvalid =
+                  field.state.meta.isTouched && !field.state.meta.isValid
+                return (
+                  <Field data-invalid={isInvalid}>
+                    <FieldLabel htmlFor="endDate">
+                      {t('academicYears.fields.endDate')}{' '}
+                      <span className="text-destructive">*</span>
+                    </FieldLabel>
+                    <Input
+                      id="endDate"
+                      name={field.name}
+                      type="date"
+                      value={field.state.value}
+                      onChange={(e) => {
+                        field.handleChange(e.target.value)
+                        setFormDirty(true)
+                      }}
+                      onBlur={field.handleBlur}
+                      placeholder={t('academicYears.fields.endDate')}
+                      aria-invalid={isInvalid}
+                    />
+                    {isInvalid && (
+                      <FieldError errors={field.state.meta.errors} />
+                    )}
+                  </Field>
+                )
+              }}
+            />
+          </FieldGroup>
+        </FieldSet>
+
+        {!yearId && (
+          <FieldSet>
+            <FieldLegend>
+              {t('academicYears.form.semesters', 'Semesters')}
+            </FieldLegend>
+            <p className="text-sm text-muted-foreground mb-4">
+              {t(
+                'academicYears.form.semesters.description',
+                'Configure how many semesters this year will have.',
+              )}
+            </p>
+            <FieldGroup>
+              <form.Field
+                name="numberOfSemesters"
+                children={(field) => {
+                  const isInvalid =
+                    field.state.meta.isTouched && !field.state.meta.isValid
+                  return (
+                    <Field data-invalid={isInvalid}>
+                      <FieldLabel htmlFor="numberOfSemesters">
+                        {t('academicYears.fields.numberOfSemesters')}{' '}
+                        <span className="text-destructive">*</span>
+                      </FieldLabel>
+                      <Input
+                        id="numberOfSemesters"
+                        name={field.name}
+                        type="number"
+                        min={1}
+                        max={4}
+                        value={field.state.value ?? ''}
+                        onChange={(e) => {
+                          field.handleChange(Number(e.target.value))
+                          setFormDirty(true)
+                        }}
+                        onBlur={field.handleBlur}
+                        aria-invalid={isInvalid}
+                      />
+                      <FieldDescription>
+                        {t('academicYears.fields.numberOfSemesters.hint')}
+                      </FieldDescription>
+                      {isInvalid && (
+                        <FieldError errors={field.state.meta.errors} />
+                      )}
+                    </Field>
+                  )
+                }}
+              />
+            </FieldGroup>
+          </FieldSet>
+        )}
+
+        <div className="flex justify-end gap-2 pt-4">
+          <Button type="button" variant="outline" onClick={handleCancel}>
+            {t('common.cancel')}
+          </Button>
+          <form.Subscribe
+            selector={(s) => ({ isSubmitting: s.isSubmitting })}
+            children={({ isSubmitting }) => (
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? t('common.saving') : t('common.save')}
+              </Button>
+            )}
+          />
+        </div>
+      </form>
+
+      <AlertDialog open={confirmLeaveOpen} onOpenChange={setConfirmLeaveOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t(
+                'academicYears.confirmLeave.title',
+                'Discard unsaved changes?',
+              )}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t(
+                'academicYears.confirmLeave.description',
+                'You have unsaved changes that will be lost.',
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmLeaveOpen(false)
+                onCancel()
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {t('academicYears.confirmLeave.discard', 'Discard')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  )
+}

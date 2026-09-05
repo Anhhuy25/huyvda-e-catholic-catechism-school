@@ -1,0 +1,381 @@
+import * as React from 'react'
+import { Link, createFileRoute, useParams } from '@tanstack/react-router'
+import { useQuery } from 'convex/react'
+import { useTranslation } from 'react-i18next'
+import {
+  CalendarCheck,
+  Calendar as CalendarIcon,
+  ChevronLeft,
+  Download,
+} from 'lucide-react'
+import { api } from '../../../../convex/_generated/api'
+import type { FunctionReturnType } from 'convex/server'
+import type { DateRange } from 'react-day-picker'
+
+import type { Id } from '../../../../convex/_generated/dataModel'
+import type { CellValue } from '~/lib/export/types'
+import type { TableColumnDef } from '~/components/custom/data-table'
+import { useAuth } from '~/lib/auth'
+import { formatDate, formatDateTime } from '~/lib/locale'
+import { formatPersonName } from '~/lib/name'
+import { exportCsv, exportPdf } from '~/lib/export'
+
+import { Button } from '~/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '~/components/ui/select'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '~/components/ui/dropdown-menu'
+import { Calendar } from '~/components/ui/calendar'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '~/components/ui/popover'
+import { DataTable } from '~/components/custom/data-table'
+import { PageHeader } from '~/components/page-header'
+
+export const Route = createFileRoute(
+  '/_authenticated/_catechist/students_/$id_/attendance',
+)({
+  component: StudentAttendanceReportPage,
+  staticData: {
+    crumbs: [
+      { label: 'students.title', path: '/students' },
+      { label: 'students.attendance.title' },
+    ],
+  },
+})
+
+type SessionTypeFilter =
+  'all' | 'mass' | 'catechism' | 'supplemental' | 'extracurricular'
+
+type StudentAttendanceRecord = FunctionReturnType<
+  typeof api.attendanceQueries.getStudentAttendanceHistory
+>[number]
+
+function toISODate(date: Date): string {
+  const yyyy = date.getFullYear()
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const dd = String(date.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+function StudentAttendanceReportPage() {
+  const { t } = useTranslation()
+  const { user } = useAuth()
+  const { id } = useParams({ strict: false })
+  const studentId = id as Id<'students'>
+
+  const [typeFilter, setTypeFilter] = React.useState<SessionTypeFilter>('all')
+  const [dateRange, setDateRange] = React.useState<DateRange | undefined>()
+  const dateFrom = dateRange?.from ? toISODate(dateRange.from) : ''
+  const dateTo = dateRange?.to ? toISODate(dateRange.to) : ''
+
+  const requesterId =
+    user?.accountType === 'catechist'
+      ? (user.userDocId as Id<'catechists'>)
+      : undefined
+
+  const student = useQuery(
+    api.students.getStudentDetail,
+    requesterId ? { requesterId, studentId } : 'skip',
+  )
+
+  const records = useQuery(
+    api.attendanceQueries.getStudentAttendanceHistory,
+    requesterId ? { requesterId, studentId } : 'skip',
+  )
+
+  const filteredRecords = React.useMemo(() => {
+    if (!records) return []
+    return records.filter((r) => {
+      if (typeFilter !== 'all' && r.sessionType !== typeFilter) return false
+      if (dateFrom && r.sessionDate < dateFrom) return false
+      if (dateTo && r.sessionDate > dateTo) return false
+      return true
+    })
+  }, [records, typeFilter, dateFrom, dateTo])
+
+  const columns = React.useMemo<Array<TableColumnDef<StudentAttendanceRecord>>>(
+    () => [
+      {
+        accessorKey: 'deviceQueuedAt',
+        header: t('students.attendance.table.time'),
+        cell: ({ row }) => (
+          <span>{formatDateTime(row.original.deviceQueuedAt)}</span>
+        ),
+      },
+      {
+        accessorKey: 'sessionType',
+        header: t('students.attendance.table.type'),
+        cell: ({ row }) => (
+          <span>
+            {t(`students.attendance.types.${row.original.sessionType}`)}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'className',
+        header: t('students.attendance.table.className'),
+        cell: ({ row }) => {
+          const { classId, className } = row.original
+          if (!classId || !className) return <span>—</span>
+          return (
+            <Link
+              to={'/classes/$id'}
+              params={{ id: classId }}
+              className="text-primary hover:underline font-medium"
+            >
+              {className}
+            </Link>
+          )
+        },
+      },
+      {
+        accessorKey: 'status',
+        header: t('students.attendance.table.status'),
+        cell: ({ row }) => (
+          <span>{t(`attendance.status.${row.original.status}`)}</span>
+        ),
+      },
+      {
+        accessorKey: 'recordedByCatechistName',
+        header: t('students.attendance.table.recordedBy'),
+        cell: ({ row }) => {
+          const { recordedByCatechistId, recordedByCatechistName } =
+            row.original
+          if (!recordedByCatechistId) {
+            return <span>{recordedByCatechistName}</span>
+          }
+          return (
+            <Link
+              to={'/catechists/$id'}
+              params={{ id: recordedByCatechistId }}
+              className="text-primary hover:underline font-medium"
+            >
+              {recordedByCatechistName}
+            </Link>
+          )
+        },
+      },
+    ],
+    [t],
+  )
+
+  const exportHeaders = React.useMemo<Array<string>>(() => {
+    return [
+      'STT',
+      t('students.attendance.table.time'),
+      t('students.attendance.table.type'),
+      t('students.attendance.table.className'),
+      t('students.attendance.table.status'),
+      t('students.attendance.table.recordedBy'),
+    ]
+  }, [t])
+
+  const exportRows = React.useMemo<Array<Record<string, CellValue>>>(() => {
+    return filteredRecords.map((r, i) => ({
+      [exportHeaders[0]]: i + 1,
+      [exportHeaders[1]]: formatDateTime(r.deviceQueuedAt),
+      [exportHeaders[2]]: t(`students.attendance.types.${r.sessionType}`),
+      [exportHeaders[3]]: r.className ?? '—',
+      [exportHeaders[4]]: t(`attendance.status.${r.status}`),
+      [exportHeaders[5]]: r.recordedByCatechistName,
+    }))
+  }, [filteredRecords, exportHeaders, t])
+
+  const studentName = student
+    ? formatPersonName(student.saintName, student.fullName)
+    : undefined
+
+  const fileNamePrefix = studentName
+    ? studentName.replace(/\s+/g, '-').toLowerCase()
+    : 'student'
+
+  const emptyText = React.useMemo(() => {
+    if (!records) return undefined
+    if (filteredRecords.length === 0) {
+      return t('students.attendance.empty')
+    }
+    return undefined
+  }, [records, filteredRecords, t])
+
+  return (
+    <div className="flex-1 flex flex-col gap-6">
+      <PageHeader
+        title={t('students.attendance.title')}
+        subtitle={studentName}
+        icon={CalendarCheck}
+        actions={
+          <>
+            <Button
+              nativeButton={false}
+              variant="outline"
+              render={
+                <Link to="/students/$id" params={{ id: id! }}>
+                  <ChevronLeft />
+                  {t('students.detail.title')}
+                </Link>
+              }
+            ></Button>
+            {filteredRecords.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button variant="outline">
+                      <Download className="size-4" />
+                      {t('classes.export.title', 'Xuất báo cáo')}
+                    </Button>
+                  }
+                />
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    onClick={() =>
+                      exportCsv(
+                        exportRows,
+                        `${fileNamePrefix}-attendance.csv`,
+                        exportHeaders,
+                      )
+                    }
+                  >
+                    {t('classes.export.csv', 'Xuất CSV')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() =>
+                      exportPdf(
+                        exportRows,
+                        t('students.attendance.title'),
+                        studentName
+                          ? { [t('students.col.fullName')]: studentName }
+                          : {},
+                        `${fileNamePrefix}-attendance.pdf`,
+                        exportHeaders,
+                        ['auto', 'auto', 'auto', '*', 'auto', '*'],
+                      )
+                    }
+                  >
+                    {t('classes.export.pdf', 'Xuất PDF')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </>
+        }
+      />
+
+      <div className="bg-card border rounded-xl p-4">
+        {records === undefined ? (
+          <div className="space-y-2">
+            {[...Array(5)].map((_, i) => (
+              <div
+                key={i}
+                className="h-10 bg-slate-850 animate-pulse rounded-lg"
+              />
+            ))}
+          </div>
+        ) : (
+          <DataTable
+            columns={columns}
+            data={filteredRecords}
+            emptyText={emptyText}
+            disableSearch
+            filterExtra={
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">
+                    {t('students.attendance.filters.dateFrom')} –{' '}
+                    {t('students.attendance.filters.dateTo')}
+                  </span>
+                  <Popover>
+                    <PopoverTrigger
+                      render={
+                        <Button
+                          variant="outline"
+                          className="w-fit justify-start"
+                        >
+                          <CalendarIcon className="size-4" />
+                          {dateRange?.from && dateRange.to
+                            ? `${formatDate(dateRange.from)} - ${formatDate(dateRange.to)}`
+                            : t('students.attendance.filters.dateFrom')}
+                        </Button>
+                      }
+                    />
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="range"
+                        selected={dateRange}
+                        onSelect={setDateRange}
+                        numberOfMonths={2}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">
+                  {t('students.attendance.filters.type')}
+                </span>
+                <Select
+                  value={typeFilter}
+                  onValueChange={(val) =>
+                    setTypeFilter(val as SessionTypeFilter)
+                  }
+                  items={[
+                    {
+                      value: 'all',
+                      label: t('students.attendance.filters.allTypes'),
+                    },
+                    {
+                      value: 'mass',
+                      label: t('students.attendance.types.mass'),
+                    },
+                    {
+                      value: 'catechism',
+                      label: t('students.attendance.types.catechism'),
+                    },
+                    {
+                      value: 'supplemental',
+                      label: t('students.attendance.types.supplemental'),
+                    },
+                    {
+                      value: 'extracurricular',
+                      label: t('students.attendance.types.extracurricular'),
+                    },
+                  ]}
+                >
+                  <SelectTrigger className="w-44">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">
+                      {t('students.attendance.filters.allTypes')}
+                    </SelectItem>
+                    <SelectItem value="mass">
+                      {t('students.attendance.types.mass')}
+                    </SelectItem>
+                    <SelectItem value="catechism">
+                      {t('students.attendance.types.catechism')}
+                    </SelectItem>
+                    <SelectItem value="supplemental">
+                      {t('students.attendance.types.supplemental')}
+                    </SelectItem>
+                    <SelectItem value="extracurricular">
+                      {t('students.attendance.types.extracurricular')}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            }
+          />
+        )}
+      </div>
+    </div>
+  )
+}
