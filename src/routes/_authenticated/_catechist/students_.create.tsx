@@ -111,8 +111,13 @@ function CreateStudentForm({ requesterId }: { requesterId: Id<'catechists'> }) {
     [t],
   )
 
+  const initialFormValues = React.useMemo(
+    () => defaultStudentFormValues(true),
+    [],
+  )
+
   const form = useForm({
-    defaultValues: defaultStudentFormValues(),
+    defaultValues: initialFormValues,
     validators: {
       onSubmit: formSchema,
     },
@@ -133,19 +138,27 @@ function CreateStudentForm({ requesterId }: { requesterId: Id<'catechists'> }) {
             notes: entry.notes || undefined,
           }))
 
-        const guardians = value.guardians.map((g) => ({
-          guardianId:
-            g.isLinked && g.guardianId
-              ? (g.guardianId as Id<'guardians'>)
-              : undefined,
-          fullName: g.fullName,
-          saintName: g.saintName || undefined,
-          relationship: g.relationship,
-          contactPriority: g.contactPriority,
-          phone: g.phone || undefined,
-          email: g.email || undefined,
-          notes: g.notes || undefined,
-        }))
+        const guardians = value.guardians
+          .filter(
+            (g) =>
+              g.phone.trim() ||
+              g.email.trim() ||
+              g.saintName.trim() ||
+              g.fullName.trim(),
+          )
+          .map((g) => ({
+            guardianId:
+              g.isLinked && g.guardianId
+                ? (g.guardianId as Id<'guardians'>)
+                : undefined,
+            fullName: g.fullName,
+            saintName: g.saintName || undefined,
+            relationship: g.relationship,
+            contactPriority: g.contactPriority,
+            phone: g.phone || undefined,
+            email: g.email || undefined,
+            notes: g.notes || undefined,
+          }))
 
         const initialEnrollment =
           value.enrollmentEnabled &&

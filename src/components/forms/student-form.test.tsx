@@ -60,6 +60,31 @@ describe('student-form helper functions', () => {
     expect(defaults.enrollmentEnabled).toBe(false)
   })
 
+  it('seeds father and mother guardians with empty fields when requested', () => {
+    const defaults = defaultStudentFormValues(true)
+
+    expect(defaults.guardians).toHaveLength(2)
+    expect(defaults.guardians[0]).toMatchObject({
+      relationship: 'father',
+      contactPriority: 1,
+      fullName: '',
+      phone: '',
+      email: '',
+      isLinked: false,
+    })
+    expect(defaults.guardians[1]).toMatchObject({
+      relationship: 'mother',
+      contactPriority: 2,
+      fullName: '',
+      phone: '',
+      email: '',
+      isLinked: false,
+    })
+    expect(defaults.guardians[0].localId).not.toBe(
+      defaults.guardians[1].localId,
+    )
+  })
+
   it('hasAddress correctly identifies if any address field is non-empty', () => {
     const emptyValues = defaultStudentFormValues()
     expect(hasAddress(emptyValues)).toBe(false)
