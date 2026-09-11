@@ -54,6 +54,7 @@ export default defineConfig({
         'vite.config.ts',
         'vitest.config.ts',
         'src/clientEnv.ts',
+        'src/routes/index.tsx',
       ],
       thresholds: {
         statements: 75,
