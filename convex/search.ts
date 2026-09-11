@@ -39,6 +39,7 @@ export const globalSearch = query({
         fullName: s.fullName,
         saintName: s.saintName,
         studentCode: s.studentCode,
+        dateOfBirth: s.dateOfBirth,
       })),
       catechists: catechists.map((c) => ({
         _id: c._id,
