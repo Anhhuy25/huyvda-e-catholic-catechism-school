@@ -926,6 +926,7 @@ function ClassDetailPage() {
             isOpen={enrollDialogOpen}
             onOpenChange={setEnrollDialogOpen}
             classYearId={classDetails.classYear._id}
+            classId={classDetails.classYear._id}
             className={classDetails.class.name}
             isPrimary={isPrimaryClass}
           />

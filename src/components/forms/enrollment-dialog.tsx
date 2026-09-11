@@ -3,7 +3,7 @@ import { useForm } from '@tanstack/react-form'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery } from 'convex/react'
 import { toast } from 'sonner'
-import { XIcon } from 'lucide-react'
+import { PlusIcon, XIcon } from 'lucide-react'
 import { z } from 'zod'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
@@ -39,11 +39,13 @@ import {
   TableRow,
 } from '~/components/ui/table'
 import { formatDate } from '~/lib/locale'
+import { Link } from '@tanstack/react-router'
 
 interface EnrollmentDialogProps {
   isOpen: boolean
   onOpenChange: (open: boolean) => void
   classYearId: Id<'classYears'>
+  classId: Id<'classYears'>
   className: string
   defaultStudentIds?: Array<Id<'students'>>
   isPrimary?: boolean
@@ -53,6 +55,7 @@ export function EnrollmentDialog({
   isOpen,
   onOpenChange,
   classYearId,
+  classId,
   className,
   defaultStudentIds,
   isPrimary = true,
@@ -382,15 +385,32 @@ export function EnrollmentDialog({
             />
           </div>
 
-          <DialogFooter>
-            <Button
-              variant="outline"
-              type="button"
-              onClick={() => onOpenChange(false)}
-            >
-              {t('common.cancel')}
-            </Button>
-            <Button type="submit">{t('classes.enrollment.submit')}</Button>
+          <DialogFooter className="flex items-center justify-between gap-4">
+            <div>
+              <Button
+                variant="link"
+                nativeButton={false}
+                render={
+                  <Link
+                    to="/students/create"
+                    search={{ enrollClassId: classId }}
+                  />
+                }
+              >
+                <PlusIcon />
+                {t('students.create.title')}
+              </Button>
+            </div>
+            <div>
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => onOpenChange(false)}
+              >
+                {t('common.cancel')}
+              </Button>
+              <Button type="submit">{t('classes.enrollment.submit')}</Button>
+            </div>
           </DialogFooter>
         </form>
       </DialogContent>
