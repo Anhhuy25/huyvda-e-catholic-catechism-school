@@ -138,7 +138,9 @@ describe('CreateExamPage component', () => {
     expect(screen.getByText('Ấu Nhi 1')).toBeInTheDocument()
 
     // Verify form fields
-    expect(screen.getByLabelText('exams.create.name', { exact: false })).toBeInTheDocument()
+    expect(
+      screen.getByLabelText('exams.create.name', { exact: false }),
+    ).toBeInTheDocument()
     expect(
       screen.getByLabelText('attendance.createSession.semester'),
     ).toBeInTheDocument()
@@ -189,7 +191,9 @@ describe('CreateExamPage component', () => {
     render(<Component />)
 
     // Change column name to make form dirty
-    const nameInput = screen.getByLabelText('exams.create.name', { exact: false })
+    const nameInput = screen.getByLabelText('exams.create.name', {
+      exact: false,
+    })
     fireEvent.change(nameInput, { target: { value: 'Midterm Test' } })
 
     // Click Cancel
@@ -216,7 +220,9 @@ describe('CreateExamPage component', () => {
     render(<Component />)
 
     // Set name
-    const nameInput = screen.getByLabelText('exams.create.name', { exact: false })
+    const nameInput = screen.getByLabelText('exams.create.name', {
+      exact: false,
+    })
     fireEvent.change(nameInput, { target: { value: 'Midterm Test' } })
 
     // Click submit button in fixed footer
