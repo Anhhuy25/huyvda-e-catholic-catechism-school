@@ -5,6 +5,7 @@ import { useMutation, useQuery } from 'convex/react'
 import { toast } from 'sonner'
 import { PlusIcon, XIcon } from 'lucide-react'
 import { z } from 'zod'
+import { Link } from '@tanstack/react-router'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { useAuth } from '~/lib/auth'
@@ -39,7 +40,6 @@ import {
   TableRow,
 } from '~/components/ui/table'
 import { formatDate } from '~/lib/locale'
-import { Link } from '@tanstack/react-router'
 
 interface EnrollmentDialogProps {
   isOpen: boolean
