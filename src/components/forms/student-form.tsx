@@ -10,7 +10,7 @@ import { DEFAULT_COUNTRY } from '~/lib/locale'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
 import { Checkbox } from '~/components/ui/checkbox'
-import { Field, FieldLabel } from '~/components/ui/field'
+import { Field, FieldError, FieldLabel } from '~/components/ui/field'
 import {
   Select,
   SelectContent,
@@ -544,6 +544,7 @@ export interface StudentFormProps {
   values: StudentFormValues
   onChange: (values: StudentFormValues) => void
   requesterId: Id<'catechists'>
+  form: any
 }
 
 export function StudentForm({
@@ -551,6 +552,7 @@ export function StudentForm({
   values,
   onChange,
   requesterId,
+  form,
 }: StudentFormProps) {
   const { t } = useTranslation()
 
@@ -635,16 +637,30 @@ export function StudentForm({
                 onChange={(e) => setField('saintName', e.target.value)}
               />
             </Field>
-            <Field>
-              <FieldLabel>
-                {t('students.form.fullName')}{' '}
-                <span className="text-destructive">*</span>
-              </FieldLabel>
-              <Input
-                value={values.fullName}
-                onChange={(e) => setField('fullName', e.target.value)}
-              />
-            </Field>
+            <form.Field name="fullName">
+              {(field: any) => {
+                const isInvalid =
+                  field.state.meta.isTouched && !field.state.meta.isValid
+                return (
+                  <Field data-invalid={isInvalid}>
+                    <FieldLabel htmlFor="fullName">
+                      {t('students.form.fullName')}{' '}
+                      <span className="text-destructive">*</span>
+                    </FieldLabel>
+                    <Input
+                      id="fullName"
+                      value={values.fullName}
+                      onChange={(e) => setField('fullName', e.target.value)}
+                      onBlur={field.handleBlur}
+                      aria-invalid={isInvalid}
+                    />
+                    {isInvalid && (
+                      <FieldError errors={field.state.meta.errors} />
+                    )}
+                  </Field>
+                )
+              }}
+            </form.Field>
             <Field>
               <FieldLabel>{t('students.form.dateOfBirth')}</FieldLabel>
               <Input

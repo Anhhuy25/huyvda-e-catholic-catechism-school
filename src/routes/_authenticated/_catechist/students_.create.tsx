@@ -240,6 +240,7 @@ function CreateStudentForm({ requesterId }: { requesterId: Id<'catechists'> }) {
           values={values}
           onChange={handleChange}
           requesterId={requesterId}
+          form={form}
         />
 
         <div className="flex justify-end gap-2">
