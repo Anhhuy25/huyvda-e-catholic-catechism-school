@@ -186,6 +186,14 @@ function ClassDetailPage() {
     }
   }
 
+  const activeStudents = React.useMemo(
+    () =>
+      (classDetails?.students ?? []).filter(
+        (s) => s.enrollment.status !== 'withdrawn',
+      ),
+    [classDetails?.students],
+  )
+
   const canManage = classDetails?.canManageEnrollments ?? false
   const isPrimaryClass =
     (classDetails?.classYear?.classType ?? 'primary') === 'primary'
@@ -202,9 +210,8 @@ function ClassDetailPage() {
   )
 
   const exportRows = React.useMemo<Array<Record<string, CellValue>>>(() => {
-    if (!classDetails?.students) return []
     const result: Array<Record<string, CellValue>> = []
-    for (const s of classDetails.students) {
+    for (const s of activeStudents) {
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       if (!s.student) continue
       result.push({
@@ -247,11 +254,9 @@ function ClassDetailPage() {
           formatPersonName(a.catechist.saintName, a.catechist.fullName),
         )
         .join(', '),
-      [t('classes.export.totalStudentsLabel')]: String(
-        classDetails.studentCount,
-      ),
+      [t('classes.export.totalStudentsLabel')]: String(activeStudents.length),
     }
-  }, [classDetails, t])
+  }, [classDetails, activeStudents.length, t])
 
   const columns = React.useMemo<Array<TableColumnDef<StudentRow>>>(() => {
     const cols: Array<TableColumnDef<StudentRow>> = [
@@ -615,7 +620,7 @@ function ClassDetailPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-4xl font-bold tabular-nums text-right">
-                  {classDetails.studentCount}
+                  {activeStudents.length}
                 </div>
               </CardContent>
             </Card>
@@ -845,7 +850,7 @@ function ClassDetailPage() {
                 <CardContent>
                   <DataTable
                     columns={columns}
-                    data={classDetails.students}
+                    data={activeStudents}
                     searchColumnKey="student_fullName"
                     sorting={sortingState}
                     onSortingChange={setSortingState}

@@ -54,7 +54,9 @@ export const list = query({
             .query('studentClasses')
             .withIndex('by_class_year_id', (q) => q.eq('classYearId', cy._id))
             .collect()
-          const activeCount = scs.filter((sc) => !sc.isDeleted).length
+          const activeCount = scs.filter(
+            (sc) => !sc.isDeleted && sc.status !== 'withdrawn',
+          ).length
           return [cy._id, activeCount] as const
         }),
       )
