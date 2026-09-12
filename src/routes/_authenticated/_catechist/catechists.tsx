@@ -6,7 +6,14 @@ import {
   useQuery,
 } from 'convex/react'
 import { useTranslation } from 'react-i18next'
-import { Download, MoreHorizontal, Plus, Users } from 'lucide-react'
+import {
+  Download,
+  MoreHorizontal,
+  Plus,
+  RotateCcw,
+  Trash2,
+  Users,
+} from 'lucide-react'
 import * as React from 'react'
 import { toast } from 'sonner'
 import { api } from '../../../../convex/_generated/api'
@@ -72,6 +79,9 @@ function CatechistsPage() {
   >('')
   const [deleteTarget, setDeleteTarget] =
     React.useState<Doc<'catechists'> | null>(null)
+  const [permanentDeleteTarget, setPermanentDeleteTarget] =
+    React.useState<Doc<'catechists'> | null>(null)
+  const [showDeleted, setShowDeleted] = React.useState(false)
 
   const [nameInput, setNameInput] = React.useState('')
   const [debouncedName, setDebouncedName] = React.useState('')
@@ -107,6 +117,7 @@ function CatechistsPage() {
     selectedBranchId,
     sortBy,
     sortOrder,
+    showDeleted,
   ])
 
   const activeYear = useQuery(
@@ -139,6 +150,7 @@ function CatechistsPage() {
           name: debouncedName || undefined,
           gender: genderFilter || undefined,
           isActive: statusFilter === '' ? undefined : statusFilter === 'active',
+          isDeleted: showDeleted,
           branchId: branchId ?? undefined,
           academicYearId: academicYearId ?? undefined,
           sortBy,
@@ -149,6 +161,8 @@ function CatechistsPage() {
   )
 
   const deleteMutation = useMutation(api.catechists.softDelete)
+  const restoreMutation = useMutation(api.catechists.restore)
+  const permanentDeleteMutation = useMutation(api.catechists.permanentDelete)
 
   const handleDelete = async () => {
     if (!deleteTarget || !requesterId) return
@@ -161,6 +175,32 @@ function CatechistsPage() {
       setDeleteTarget(null)
     } catch (err) {
       toast.error(translateConvexError(err, t, 'catechists.deleteError'))
+    }
+  }
+
+  const handleRestore = async (catechist: Doc<'catechists'>) => {
+    if (!requesterId) return
+    try {
+      await restoreMutation({ requesterId, catechistId: catechist._id })
+      toast.success(t('catechists.restored'))
+    } catch (err) {
+      toast.error(translateConvexError(err, t, 'catechists.restoreError'))
+    }
+  }
+
+  const handlePermanentDelete = async () => {
+    if (!permanentDeleteTarget || !requesterId) return
+    try {
+      await permanentDeleteMutation({
+        requesterId,
+        catechistId: permanentDeleteTarget._id,
+      })
+      toast.success(t('catechists.permanentDeleted'))
+      setPermanentDeleteTarget(null)
+    } catch (err) {
+      toast.error(
+        translateConvexError(err, t, 'catechists.permanentDeleteError'),
+      )
     }
   }
 
@@ -265,6 +305,9 @@ function CatechistsPage() {
       cell: ({ row }) => {
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         if (!row.original) return null
+        if (showDeleted) {
+          return <span className="font-medium">{row.original.fullName}</span>
+        }
         return (
           <Link
             to={'/catechists/$id'}
@@ -324,6 +367,35 @@ function CatechistsPage() {
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         if (!canManage || !row.original) return null
         const catechist = row.original
+
+        if (showDeleted) {
+          return (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="ghost" size="icon" className="size-8">
+                    <MoreHorizontal className="size-4" />
+                    <span className="sr-only">{t('common.moreActions')}</span>
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => handleRestore(catechist)}>
+                  <RotateCcw className="size-4" />
+                  {t('catechists.restore')}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-destructive focus:bg-destructive/10 focus:text-destructive dark:focus:bg-destructive/20"
+                  onClick={() => setPermanentDeleteTarget(catechist)}
+                >
+                  <Trash2 className="size-4" />
+                  {t('catechists.permanentDelete.action')}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )
+        }
+
         return (
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -366,13 +438,23 @@ function CatechistsPage() {
         subtitle={t('catechists.subtitle')}
         actions={
           <div className="flex items-center gap-2">
-            {canExport && (
+            {canManage && (
+              <Button
+                variant="outline"
+                onClick={() => setShowDeleted((prev) => !prev)}
+              >
+                {showDeleted
+                  ? t('catechists.showActive')
+                  : t('catechists.showDeleted')}
+              </Button>
+            )}
+            {!showDeleted && canExport && (
               <Button variant="outline" onClick={handleExport}>
                 <Download className="size-4" />
                 {t('catechists.export.csv')}
               </Button>
             )}
-            {canManage && (
+            {!showDeleted && canManage && (
               <Button
                 nativeButton={false}
                 render={<Link to="/catechists/create" />}
@@ -517,6 +599,41 @@ function CatechistsPage() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {t('catechists.delete.confirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Permanent Delete Confirmation */}
+      <AlertDialog
+        open={permanentDeleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setPermanentDeleteTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('catechists.permanentDelete.title')}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('catechists.permanentDelete.description', {
+                name: permanentDeleteTarget
+                  ? formatPersonName(
+                      permanentDeleteTarget.saintName,
+                      permanentDeleteTarget.fullName,
+                    )
+                  : '',
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handlePermanentDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {t('catechists.permanentDelete.confirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

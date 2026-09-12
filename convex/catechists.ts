@@ -282,6 +282,7 @@ const catechistFilterArgs = {
   name: v.optional(v.string()),
   gender: v.optional(v.union(v.literal('male'), v.literal('female'))),
   isActive: v.optional(v.boolean()),
+  isDeleted: v.optional(v.boolean()),
   branchId: v.optional(v.id('branches')),
   academicYearId: v.optional(v.id('academicYears')),
   sortBy: v.optional(
@@ -304,6 +305,7 @@ async function filterAndSortCatechists(
     name?: string
     gender?: 'male' | 'female'
     isActive?: boolean
+    isDeleted?: boolean
     branchId?: Id<'branches'>
     academicYearId?: Id<'academicYears'>
     sortBy?:
@@ -334,7 +336,9 @@ async function filterAndSortCatechists(
 
   const catechists = await ctx.db
     .query('catechists')
-    .withIndex('by_is_deleted', (q) => q.eq('isDeleted', false))
+    .withIndex('by_is_deleted', (q) =>
+      q.eq('isDeleted', args.isDeleted ?? false),
+    )
     .collect()
 
   const nameQuery = args.name?.trim().toLowerCase()
@@ -933,6 +937,143 @@ export const softDelete = mutation({
     if (account && !account.isDeleted && account.isActive) {
       await ctx.db.patch('accounts', account._id, { isActive: false })
     }
+  },
+})
+
+export const restore = mutation({
+  args: {
+    requesterId: v.id('catechists'),
+    catechistId: v.id('catechists'),
+  },
+  handler: async (ctx, args) => {
+    await assertAdminRole(ctx, args.requesterId)
+    const catechist = await ctx.db.get('catechists', args.catechistId)
+    if (!catechist || !catechist.isDeleted) {
+      throw new Error(CATECHIST_ERRORS.NOT_FOUND)
+    }
+
+    await ctx.db.patch('catechists', args.catechistId, { isDeleted: false })
+
+    const account = await ctx.db
+      .query('accounts')
+      .withIndex('by_login_id', (q) =>
+        q.eq('loginId', getCatechistLoginId(catechist.memberId)),
+      )
+      .unique()
+    if (account && !account.isDeleted && !account.isActive) {
+      await ctx.db.patch('accounts', account._id, { isActive: true })
+    }
+  },
+})
+
+export const permanentDelete = mutation({
+  args: {
+    requesterId: v.id('catechists'),
+    catechistId: v.id('catechists'),
+  },
+  handler: async (ctx, args) => {
+    await assertAdminRole(ctx, args.requesterId)
+    const catechist = await ctx.db.get('catechists', args.catechistId)
+    if (!catechist || !catechist.isDeleted) {
+      throw new Error(CATECHIST_ERRORS.NOT_FOUND)
+    }
+
+    const [
+      classCatechists,
+      academicYearAssignments,
+      branchAssignments,
+      attendanceRecords,
+      scoreEntries,
+      scoreEntryHistories,
+      calendarEventsCreated,
+      calendarEventsUpdated,
+      impersonationLogsAsAdmin,
+      impersonationLogsAsTarget,
+    ] = await Promise.all([
+      ctx.db
+        .query('classCatechists')
+        .withIndex('by_catechist_id', (q) =>
+          q.eq('catechistId', args.catechistId),
+        )
+        .first(),
+      ctx.db
+        .query('academicYearAssignments')
+        .withIndex('by_catechist_id', (q) =>
+          q.eq('catechistId', args.catechistId),
+        )
+        .first(),
+      ctx.db
+        .query('branchAssignments')
+        .withIndex('by_catechist_id', (q) =>
+          q.eq('catechistId', args.catechistId),
+        )
+        .first(),
+      // No index exists on recordedBy/enteredBy/changedBy/createdBy/updatedBy/
+      // targetCatechistId — full scan is acceptable here: rare, admin-only,
+      // one-time guard, not a hot path.
+      ctx.db
+        .query('attendanceRecords')
+        // eslint-disable-next-line @convex-dev/no-filter-in-query
+        .filter((q) => q.eq(q.field('recordedBy'), args.catechistId))
+        .first(),
+      ctx.db
+        .query('scoreEntries')
+        // eslint-disable-next-line @convex-dev/no-filter-in-query
+        .filter((q) => q.eq(q.field('enteredBy'), args.catechistId))
+        .first(),
+      ctx.db
+        .query('scoreEntryHistories')
+        // eslint-disable-next-line @convex-dev/no-filter-in-query
+        .filter((q) => q.eq(q.field('changedBy'), args.catechistId))
+        .first(),
+      ctx.db
+        .query('calendarEvents')
+        // eslint-disable-next-line @convex-dev/no-filter-in-query
+        .filter((q) => q.eq(q.field('createdBy'), args.catechistId))
+        .first(),
+      ctx.db
+        .query('calendarEvents')
+        // eslint-disable-next-line @convex-dev/no-filter-in-query
+        .filter((q) => q.eq(q.field('updatedBy'), args.catechistId))
+        .first(),
+      ctx.db
+        .query('impersonationLogs')
+        .withIndex('by_admin_id', (q) => q.eq('adminId', args.catechistId))
+        .first(),
+      ctx.db
+        .query('impersonationLogs')
+        // eslint-disable-next-line @convex-dev/no-filter-in-query
+        .filter((q) => q.eq(q.field('targetCatechistId'), args.catechistId))
+        .first(),
+    ])
+
+    const hasHistory =
+      classCatechists !== null ||
+      academicYearAssignments !== null ||
+      branchAssignments !== null ||
+      attendanceRecords !== null ||
+      scoreEntries !== null ||
+      scoreEntryHistories !== null ||
+      calendarEventsCreated !== null ||
+      calendarEventsUpdated !== null ||
+      impersonationLogsAsAdmin !== null ||
+      impersonationLogsAsTarget !== null
+
+    if (hasHistory) {
+      throw new Error(CATECHIST_ERRORS.HAS_HISTORY)
+    }
+
+    const account = await ctx.db
+      .query('accounts')
+      .withIndex('by_login_id', (q) =>
+        q.eq('loginId', getCatechistLoginId(catechist.memberId)),
+      )
+      .unique()
+    if (account) {
+      await ctx.db.delete('accounts', account._id)
+    }
+
+    await ctx.db.delete('catechists', args.catechistId)
   },
 })
 

@@ -1378,6 +1378,89 @@ describe('list with branch filter', () => {
   })
 })
 
+describe('list isDeleted arg', () => {
+  test('isDeleted: true returns only soft-deleted catechists', async () => {
+    const t = convexTest(schema, modules)
+    const { adminId, deletedUserId } = await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert('catechists', {
+        memberId: 'ADMIN',
+        fullName: 'Admin',
+        role: 'admin',
+        isActive: true,
+        isDeleted: false,
+      })
+      await ctx.db.insert('catechists', {
+        memberId: 'USER1',
+        fullName: 'Active User',
+        role: 'user',
+        isActive: true,
+        isDeleted: false,
+      })
+      const deletedUserId = await ctx.db.insert('catechists', {
+        memberId: 'USER2',
+        fullName: 'Deleted User',
+        role: 'user',
+        isActive: true,
+        isDeleted: true,
+      })
+      return { adminId, deletedUserId }
+    })
+
+    const list = await t.query(api.catechists.list, {
+      requesterId: adminId,
+      isDeleted: true,
+      paginationOpts: { numItems: 100, cursor: null },
+    })
+    expect(list.page).toHaveLength(1)
+    expect(list.page[0]._id).toBe(deletedUserId)
+  })
+
+  test('omitting isDeleted (and isDeleted: false) still returns only active catechists', async () => {
+    const t = convexTest(schema, modules)
+    const { adminId, activeUserId } = await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert('catechists', {
+        memberId: 'ADMIN',
+        fullName: 'Admin',
+        role: 'admin',
+        isActive: true,
+        isDeleted: false,
+      })
+      const activeUserId = await ctx.db.insert('catechists', {
+        memberId: 'USER1',
+        fullName: 'Active User',
+        role: 'user',
+        isActive: true,
+        isDeleted: false,
+      })
+      await ctx.db.insert('catechists', {
+        memberId: 'USER2',
+        fullName: 'Deleted User',
+        role: 'user',
+        isActive: true,
+        isDeleted: true,
+      })
+      return { adminId, activeUserId }
+    })
+
+    const listDefault = await t.query(api.catechists.list, {
+      requesterId: adminId,
+      paginationOpts: { numItems: 100, cursor: null },
+    })
+    expect(listDefault.page.map((c) => c._id).sort()).toEqual(
+      [adminId, activeUserId].sort(),
+    )
+
+    const listExplicitFalse = await t.query(api.catechists.list, {
+      requesterId: adminId,
+      isDeleted: false,
+      paginationOpts: { numItems: 100, cursor: null },
+    })
+    expect(listExplicitFalse.page.map((c) => c._id).sort()).toEqual(
+      [adminId, activeUserId].sort(),
+    )
+  })
+})
+
 describe('auto-account creation', () => {
   test('create auto-creates an account with loginId CAT-<memberId>', async () => {
     const t = convexTest(schema, modules)
@@ -2975,5 +3058,592 @@ describe('getMySidebarInfo', () => {
         requesterId: catechistId,
       }),
     ).rejects.toThrow(AUTHZ_ERRORS.CATECHIST_NOT_FOUND)
+  })
+})
+
+describe('restore', () => {
+  test('flips isDeleted to false and reactivates a soft-deleted-inactive account', async () => {
+    const t = convexTest(schema, modules)
+    const { adminId, userId, accountId } = await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert('catechists', {
+        memberId: 'ADMIN',
+        fullName: 'Admin',
+        role: 'admin',
+        isActive: true,
+        isDeleted: false,
+      })
+      const userId = await ctx.db.insert('catechists', {
+        memberId: 'USER',
+        fullName: 'User',
+        role: 'user',
+        isActive: true,
+        isDeleted: true,
+      })
+      const accountId = await ctx.db.insert('accounts', {
+        loginId: getCatechistLoginId('USER'),
+        passwordHash: 'hashed',
+        accountType: 'catechist',
+        userRefId: userId,
+        isActive: false,
+        createdAt: Date.now(),
+        isDeleted: false,
+      })
+      return { adminId, userId, accountId }
+    })
+
+    await t.mutation(api.catechists.restore, {
+      requesterId: adminId,
+      catechistId: userId,
+    })
+
+    const catechist = await t.run(async (ctx) =>
+      ctx.db.get('catechists', userId),
+    )
+    expect(catechist?.isDeleted).toBe(false)
+
+    const account = await t.run(async (ctx) =>
+      ctx.db.get('accounts', accountId),
+    )
+    expect(account?.isActive).toBe(true)
+  })
+
+  test('throws NOT_FOUND for nonexistent id', async () => {
+    const t = convexTest(schema, modules)
+    const adminId = await t.run(async (ctx) => {
+      return await ctx.db.insert('catechists', {
+        memberId: 'ADMIN',
+        fullName: 'Admin',
+        role: 'admin',
+        isActive: true,
+        isDeleted: false,
+      })
+    })
+    const invalidId = await t.run(async (ctx) => {
+      const id = await ctx.db.insert('catechists', {
+        memberId: 'TMP',
+        fullName: 'TMP',
+        role: 'user',
+        isActive: true,
+        isDeleted: true,
+      })
+      await ctx.db.delete('catechists', id)
+      return id
+    })
+
+    await expect(
+      t.mutation(api.catechists.restore, {
+        requesterId: adminId,
+        catechistId: invalidId,
+      }),
+    ).rejects.toThrow(CATECHIST_ERRORS.NOT_FOUND)
+  })
+
+  test('throws NOT_FOUND for an already-active (non-deleted) catechist', async () => {
+    const t = convexTest(schema, modules)
+    const { adminId, userId } = await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert('catechists', {
+        memberId: 'ADMIN',
+        fullName: 'Admin',
+        role: 'admin',
+        isActive: true,
+        isDeleted: false,
+      })
+      const userId = await ctx.db.insert('catechists', {
+        memberId: 'USER',
+        fullName: 'User',
+        role: 'user',
+        isActive: true,
+        isDeleted: false,
+      })
+      return { adminId, userId }
+    })
+
+    await expect(
+      t.mutation(api.catechists.restore, {
+        requesterId: adminId,
+        catechistId: userId,
+      }),
+    ).rejects.toThrow(CATECHIST_ERRORS.NOT_FOUND)
+  })
+
+  test('rejects a non-admin requester', async () => {
+    const t = convexTest(schema, modules)
+    const { requesterId, userId } = await t.run(async (ctx) => {
+      const requesterId = await ctx.db.insert('catechists', {
+        memberId: 'REQ',
+        fullName: 'Requester',
+        role: 'user',
+        isActive: true,
+        isDeleted: false,
+      })
+      const userId = await ctx.db.insert('catechists', {
+        memberId: 'USER',
+        fullName: 'User',
+        role: 'user',
+        isActive: true,
+        isDeleted: true,
+      })
+      return { requesterId, userId }
+    })
+
+    await expect(
+      t.mutation(api.catechists.restore, {
+        requesterId,
+        catechistId: userId,
+      }),
+    ).rejects.toThrow(AUTHZ_ERRORS.ADMIN_REQUIRED)
+  })
+})
+
+describe('permanentDelete', () => {
+  async function seedBase(t: ReturnType<typeof convexTest>) {
+    return await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert('catechists', {
+        memberId: 'ADMIN',
+        fullName: 'Admin',
+        role: 'admin',
+        isActive: true,
+        isDeleted: false,
+      })
+      const catechistId = await ctx.db.insert('catechists', {
+        memberId: 'USER',
+        fullName: 'User',
+        role: 'user',
+        isActive: true,
+        isDeleted: true,
+      })
+      const academicYearId = await ctx.db.insert('academicYears', {
+        name: '2023-2024',
+        startDate: '2023-09-01',
+        endDate: '2024-05-31',
+        timezone: 'Asia/Ho_Chi_Minh',
+        isActive: true,
+        isDeleted: false,
+      })
+      const branchId = await ctx.db.insert('branches', {
+        name: 'Branch 1',
+        sortOrder: 1,
+        isDeleted: false,
+      })
+      const classId = await ctx.db.insert('classes', {
+        branchId,
+        name: 'Class 1',
+        isDeleted: false,
+      })
+      const classYearId = await ctx.db.insert('classYears', {
+        classId,
+        academicYearId,
+        isDeleted: false,
+      })
+      const semesterId = await ctx.db.insert('semesters', {
+        academicYearId,
+        semesterNumber: 1,
+        isDeleted: false,
+      })
+      const studentId = await ctx.db.insert('students', {
+        studentCode: 'STU0001',
+        fullName: 'Student One',
+        isActive: true,
+        createdAt: Date.now(),
+        isDeleted: false,
+      })
+      const studentClassId = await ctx.db.insert('studentClasses', {
+        studentId,
+        classYearId,
+        isPrimaryClass: true,
+        enrolledDate: '2023-09-01',
+        status: 'active',
+        isDeleted: false,
+      })
+      const classSessionId = await ctx.db.insert('classSessions', {
+        classYearId,
+        semesterId,
+        sessionDate: '2023-09-05',
+        sessionType: 'catechism',
+        isCancelled: false,
+        isDeleted: false,
+      })
+      const scoreColumnId = await ctx.db.insert('scoreColumns', {
+        classYearId,
+        semesterId,
+        columnName: 'Quiz 1',
+        columnType: 'short_quiz',
+        sortOrder: 1,
+        isDeleted: false,
+      })
+      return {
+        adminId,
+        catechistId,
+        academicYearId,
+        branchId,
+        classId,
+        classYearId,
+        semesterId,
+        studentId,
+        studentClassId,
+        classSessionId,
+        scoreColumnId,
+      }
+    })
+  }
+
+  test('hard-deletes the catechist and its linked account when there is no history', async () => {
+    const t = convexTest(schema, modules)
+    const { adminId, catechistId } = await seedBase(t)
+    const accountId = await t.run(async (ctx) => {
+      return await ctx.db.insert('accounts', {
+        loginId: getCatechistLoginId('USER'),
+        passwordHash: 'hashed',
+        accountType: 'catechist',
+        userRefId: catechistId,
+        isActive: false,
+        createdAt: Date.now(),
+        isDeleted: false,
+      })
+    })
+
+    await t.mutation(api.catechists.permanentDelete, {
+      requesterId: adminId,
+      catechistId,
+    })
+
+    const catechist = await t.run(async (ctx) =>
+      ctx.db.get('catechists', catechistId),
+    )
+    expect(catechist).toBeNull()
+
+    const account = await t.run(async (ctx) =>
+      ctx.db.get('accounts', accountId),
+    )
+    expect(account).toBeNull()
+  })
+
+  test('succeeds when no account is linked', async () => {
+    const t = convexTest(schema, modules)
+    const { adminId, catechistId } = await seedBase(t)
+
+    await t.mutation(api.catechists.permanentDelete, {
+      requesterId: adminId,
+      catechistId,
+    })
+
+    const catechist = await t.run(async (ctx) =>
+      ctx.db.get('catechists', catechistId),
+    )
+    expect(catechist).toBeNull()
+  })
+
+  test('blocks with HAS_HISTORY when a classCatechists reference exists', async () => {
+    const t = convexTest(schema, modules)
+    const { adminId, catechistId, classYearId, academicYearId } =
+      await seedBase(t)
+    await t.run(async (ctx) => {
+      await ctx.db.insert('classCatechists', {
+        catechistId,
+        classYearId,
+        academicYearId,
+        role: 'homeroom',
+        isDeleted: false,
+      })
+    })
+
+    await expect(
+      t.mutation(api.catechists.permanentDelete, {
+        requesterId: adminId,
+        catechistId,
+      }),
+    ).rejects.toThrow(CATECHIST_ERRORS.HAS_HISTORY)
+
+    const catechist = await t.run(async (ctx) =>
+      ctx.db.get('catechists', catechistId),
+    )
+    expect(catechist).not.toBeNull()
+  })
+
+  test('blocks with HAS_HISTORY when an academicYearAssignments reference exists', async () => {
+    const t = convexTest(schema, modules)
+    const { adminId, catechistId, academicYearId } = await seedBase(t)
+    await t.run(async (ctx) => {
+      await ctx.db.insert('academicYearAssignments', {
+        academicYearId,
+        catechistId,
+        assignmentType: 'board_member',
+        isDeleted: false,
+      })
+    })
+
+    await expect(
+      t.mutation(api.catechists.permanentDelete, {
+        requesterId: adminId,
+        catechistId,
+      }),
+    ).rejects.toThrow(CATECHIST_ERRORS.HAS_HISTORY)
+  })
+
+  test('blocks with HAS_HISTORY when a branchAssignments reference exists', async () => {
+    const t = convexTest(schema, modules)
+    const { adminId, catechistId, academicYearId, branchId } = await seedBase(t)
+    await t.run(async (ctx) => {
+      await ctx.db.insert('branchAssignments', {
+        academicYearId,
+        catechistId,
+        branchId,
+        isDeleted: false,
+      })
+    })
+
+    await expect(
+      t.mutation(api.catechists.permanentDelete, {
+        requesterId: adminId,
+        catechistId,
+      }),
+    ).rejects.toThrow(CATECHIST_ERRORS.HAS_HISTORY)
+  })
+
+  test('blocks with HAS_HISTORY when an attendanceRecords.recordedBy reference exists', async () => {
+    const t = convexTest(schema, modules)
+    const { adminId, catechistId, classSessionId, studentClassId } =
+      await seedBase(t)
+    await t.run(async (ctx) => {
+      await ctx.db.insert('attendanceRecords', {
+        sessionId: classSessionId,
+        studentClassId,
+        status: 'present',
+        recordedBy: catechistId,
+        deviceQueuedAt: Date.now(),
+        isDeleted: false,
+      })
+    })
+
+    await expect(
+      t.mutation(api.catechists.permanentDelete, {
+        requesterId: adminId,
+        catechistId,
+      }),
+    ).rejects.toThrow(CATECHIST_ERRORS.HAS_HISTORY)
+  })
+
+  test('blocks with HAS_HISTORY when a scoreEntries.enteredBy reference exists', async () => {
+    const t = convexTest(schema, modules)
+    const { adminId, catechistId, studentClassId, scoreColumnId } =
+      await seedBase(t)
+    await t.run(async (ctx) => {
+      await ctx.db.insert('scoreEntries', {
+        studentClassId,
+        scoreColumnId,
+        enteredBy: catechistId,
+        enteredAt: Date.now(),
+        isDeleted: false,
+      })
+    })
+
+    await expect(
+      t.mutation(api.catechists.permanentDelete, {
+        requesterId: adminId,
+        catechistId,
+      }),
+    ).rejects.toThrow(CATECHIST_ERRORS.HAS_HISTORY)
+  })
+
+  test('blocks with HAS_HISTORY when a scoreEntryHistories.changedBy reference exists', async () => {
+    const t = convexTest(schema, modules)
+    const { adminId, catechistId, studentClassId, scoreColumnId } =
+      await seedBase(t)
+    await t.run(async (ctx) => {
+      const scoreEntryId = await ctx.db.insert('scoreEntries', {
+        studentClassId,
+        scoreColumnId,
+        enteredBy: adminId,
+        enteredAt: Date.now(),
+        isDeleted: false,
+      })
+      await ctx.db.insert('scoreEntryHistories', {
+        scoreEntryId,
+        changedBy: catechistId,
+        changedAt: Date.now(),
+      })
+    })
+
+    await expect(
+      t.mutation(api.catechists.permanentDelete, {
+        requesterId: adminId,
+        catechistId,
+      }),
+    ).rejects.toThrow(CATECHIST_ERRORS.HAS_HISTORY)
+  })
+
+  test('blocks with HAS_HISTORY when a calendarEvents.createdBy reference exists', async () => {
+    const t = convexTest(schema, modules)
+    const { adminId, catechistId, academicYearId } = await seedBase(t)
+    await t.run(async (ctx) => {
+      await ctx.db.insert('calendarEvents', {
+        academicYearId,
+        date: '2023-09-05',
+        description: '{}',
+        severity: 'medium',
+        scope: 'board',
+        createdBy: catechistId,
+        createdAt: Date.now(),
+        isDeleted: false,
+      })
+    })
+
+    await expect(
+      t.mutation(api.catechists.permanentDelete, {
+        requesterId: adminId,
+        catechistId,
+      }),
+    ).rejects.toThrow(CATECHIST_ERRORS.HAS_HISTORY)
+  })
+
+  test('blocks with HAS_HISTORY when a calendarEvents.updatedBy reference exists', async () => {
+    const t = convexTest(schema, modules)
+    const { adminId, catechistId, academicYearId } = await seedBase(t)
+    await t.run(async (ctx) => {
+      await ctx.db.insert('calendarEvents', {
+        academicYearId,
+        date: '2023-09-05',
+        description: '{}',
+        severity: 'medium',
+        scope: 'board',
+        createdBy: adminId,
+        createdAt: Date.now(),
+        updatedBy: catechistId,
+        updatedAt: Date.now(),
+        isDeleted: false,
+      })
+    })
+
+    await expect(
+      t.mutation(api.catechists.permanentDelete, {
+        requesterId: adminId,
+        catechistId,
+      }),
+    ).rejects.toThrow(CATECHIST_ERRORS.HAS_HISTORY)
+  })
+
+  test('blocks with HAS_HISTORY when an impersonationLogs.adminId reference exists', async () => {
+    const t = convexTest(schema, modules)
+    const { adminId, catechistId } = await seedBase(t)
+    await t.run(async (ctx) => {
+      await ctx.db.insert('impersonationLogs', {
+        adminId: catechistId,
+        targetCatechistId: adminId,
+        at: Date.now(),
+      })
+    })
+
+    await expect(
+      t.mutation(api.catechists.permanentDelete, {
+        requesterId: adminId,
+        catechistId,
+      }),
+    ).rejects.toThrow(CATECHIST_ERRORS.HAS_HISTORY)
+  })
+
+  test('blocks with HAS_HISTORY when an impersonationLogs.targetCatechistId reference exists', async () => {
+    const t = convexTest(schema, modules)
+    const { adminId, catechistId } = await seedBase(t)
+    await t.run(async (ctx) => {
+      await ctx.db.insert('impersonationLogs', {
+        adminId,
+        targetCatechistId: catechistId,
+        at: Date.now(),
+      })
+    })
+
+    await expect(
+      t.mutation(api.catechists.permanentDelete, {
+        requesterId: adminId,
+        catechistId,
+      }),
+    ).rejects.toThrow(CATECHIST_ERRORS.HAS_HISTORY)
+  })
+
+  test('throws NOT_FOUND for a nonexistent id', async () => {
+    const t = convexTest(schema, modules)
+    const adminId = await t.run(async (ctx) => {
+      return await ctx.db.insert('catechists', {
+        memberId: 'ADMIN',
+        fullName: 'Admin',
+        role: 'admin',
+        isActive: true,
+        isDeleted: false,
+      })
+    })
+    const invalidId = await t.run(async (ctx) => {
+      const id = await ctx.db.insert('catechists', {
+        memberId: 'TMP',
+        fullName: 'TMP',
+        role: 'user',
+        isActive: true,
+        isDeleted: true,
+      })
+      await ctx.db.delete('catechists', id)
+      return id
+    })
+
+    await expect(
+      t.mutation(api.catechists.permanentDelete, {
+        requesterId: adminId,
+        catechistId: invalidId,
+      }),
+    ).rejects.toThrow(CATECHIST_ERRORS.NOT_FOUND)
+  })
+
+  test('throws NOT_FOUND for a catechist that is not soft-deleted', async () => {
+    const t = convexTest(schema, modules)
+    const { adminId, userId } = await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert('catechists', {
+        memberId: 'ADMIN',
+        fullName: 'Admin',
+        role: 'admin',
+        isActive: true,
+        isDeleted: false,
+      })
+      const userId = await ctx.db.insert('catechists', {
+        memberId: 'USER',
+        fullName: 'User',
+        role: 'user',
+        isActive: true,
+        isDeleted: false,
+      })
+      return { adminId, userId }
+    })
+
+    await expect(
+      t.mutation(api.catechists.permanentDelete, {
+        requesterId: adminId,
+        catechistId: userId,
+      }),
+    ).rejects.toThrow(CATECHIST_ERRORS.NOT_FOUND)
+  })
+
+  test('rejects a non-admin requester', async () => {
+    const t = convexTest(schema, modules)
+    const { requesterId, catechistId } = await t.run(async (ctx) => {
+      const requesterId = await ctx.db.insert('catechists', {
+        memberId: 'REQ',
+        fullName: 'Requester',
+        role: 'user',
+        isActive: true,
+        isDeleted: false,
+      })
+      const catechistId = await ctx.db.insert('catechists', {
+        memberId: 'USER',
+        fullName: 'User',
+        role: 'user',
+        isActive: true,
+        isDeleted: true,
+      })
+      return { requesterId, catechistId }
+    })
+
+    await expect(
+      t.mutation(api.catechists.permanentDelete, {
+        requesterId,
+        catechistId,
+      }),
+    ).rejects.toThrow(AUTHZ_ERRORS.ADMIN_REQUIRED)
   })
 })
