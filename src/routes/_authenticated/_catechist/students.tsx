@@ -12,6 +12,8 @@ import {
   MoreHorizontal,
   Plus,
   Printer,
+  RotateCcw,
+  Trash2,
   Users,
 } from 'lucide-react'
 import * as React from 'react'
@@ -80,6 +82,11 @@ function StudentsPage() {
   const requesterId = user?.userDocId as Id<'catechists'> | undefined
   const appConfig = useQuery(api.appConfig.get)
 
+  const [deleteTarget, setDeleteTarget] = React.useState<Student | null>(null)
+  const [permanentDeleteTarget, setPermanentDeleteTarget] =
+    React.useState<Student | null>(null)
+  const [showDeleted, setShowDeleted] = React.useState(false)
+
   const [nameInput, setNameInput] = React.useState('')
   const [debouncedName, setDebouncedName] = React.useState('')
   const [genderFilter, setGenderFilter] = React.useState<
@@ -124,6 +131,7 @@ function StudentsPage() {
     classYearFilter,
     sortBy,
     sortOrder,
+    showDeleted,
   ])
 
   const activeYear = useQuery(
@@ -202,6 +210,7 @@ function StudentsPage() {
           name: debouncedName || undefined,
           gender: genderFilter || undefined,
           isActive: statusFilter === '' ? undefined : statusFilter === 'active',
+          isDeleted: showDeleted,
           branchId: (branchFilter as Id<'branches'>) || undefined,
           classYearId: (classYearFilter as Id<'classYears'>) || undefined,
           academicYearId: selectedYearId ?? undefined,
@@ -212,8 +221,8 @@ function StudentsPage() {
     { initialNumItems: pagination.pageSize },
   )
   const deleteMutation = useMutation(api.students.softDelete)
-
-  const [deleteTarget, setDeleteTarget] = React.useState<Student | null>(null)
+  const restoreMutation = useMutation(api.students.restore)
+  const permanentDeleteMutation = useMutation(api.students.permanentDelete)
 
   const handleDelete = async () => {
     if (!deleteTarget || !requesterId) return
@@ -229,6 +238,30 @@ function StudentsPage() {
     }
   }
 
+  const handleRestore = async (student: Student) => {
+    if (!requesterId) return
+    try {
+      await restoreMutation({ requesterId, studentId: student._id })
+      toast.success(t('students.restored'))
+    } catch (err) {
+      toast.error(translateConvexError(err, t, 'students.restoreError'))
+    }
+  }
+
+  const handlePermanentDelete = async () => {
+    if (!permanentDeleteTarget || !requesterId) return
+    try {
+      await permanentDeleteMutation({
+        requesterId,
+        studentId: permanentDeleteTarget._id,
+      })
+      toast.success(t('students.permanentDeleted'))
+      setPermanentDeleteTarget(null)
+    } catch (err) {
+      toast.error(translateConvexError(err, t, 'students.permanentDeleteError'))
+    }
+  }
+
   const convex = useConvex()
 
   const handleExport = async () => {
@@ -240,6 +273,7 @@ function StudentsPage() {
         name: debouncedName || undefined,
         gender: genderFilter || undefined,
         isActive: statusFilter === '' ? undefined : statusFilter === 'active',
+        isDeleted: showDeleted,
         branchId: (branchFilter as Id<'branches'>) || undefined,
         classYearId: (classYearFilter as Id<'classYears'>) || undefined,
         academicYearId: selectedYearId ?? undefined,
@@ -319,6 +353,11 @@ function StudentsPage() {
       header: t('students.col.fullName'),
       enableSorting: true,
       cell: ({ row }) => {
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        if (!row.original) return null
+        if (showDeleted) {
+          return <span className="font-medium">{row.original.fullName}</span>
+        }
         return (
           <Link
             // @ts-ignore - Route not yet generated
@@ -373,8 +412,41 @@ function StudentsPage() {
       enableSorting: false,
       enableHiding: false,
       cell: ({ row }) => {
-        if (!requesterId) return null
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        if (!requesterId || !row.original) return null
         const student = row.original
+
+        if (showDeleted) {
+          if (!canManage) return null
+          return (
+            <div className="flex items-center justify-end gap-1">
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button variant="ghost" size="icon" className="size-8">
+                      <MoreHorizontal className="size-4" />
+                      <span className="sr-only">{t('common.moreActions')}</span>
+                    </Button>
+                  }
+                />
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onClick={() => handleRestore(student)}>
+                    <RotateCcw className="size-4" />
+                    {t('students.restore')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-destructive focus:bg-destructive/10 focus:text-destructive dark:focus:bg-destructive/20"
+                    onClick={() => setPermanentDeleteTarget(student)}
+                  >
+                    <Trash2 className="size-4" />
+                    {t('students.permanentDelete.action')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )
+        }
+
         const isEditable = !!student.isEditable
         return (
           <div className="flex items-center justify-end gap-1">
@@ -470,14 +542,24 @@ function StudentsPage() {
         title={t('students.title')}
         subtitle={t('students.subtitle')}
         actions={
-          <>
-            {canExport && (
+          <div className="flex items-center gap-2">
+            {canManage && (
+              <Button
+                variant="outline"
+                onClick={() => setShowDeleted((prev) => !prev)}
+              >
+                {showDeleted
+                  ? t('students.showActive')
+                  : t('students.showDeleted')}
+              </Button>
+            )}
+            {!showDeleted && canExport && (
               <Button variant="outline" onClick={handleExport}>
                 <Download className="size-4" />
                 {t('students.export.csv')}
               </Button>
             )}
-            {requesterId && (
+            {!showDeleted && requesterId && (
               <Button
                 nativeButton={false}
                 render={<Link to="/students/create" />}
@@ -486,7 +568,7 @@ function StudentsPage() {
                 {t('students.actions.create')}
               </Button>
             )}
-          </>
+          </div>
         }
       />
       <div className="bg-card border rounded-xl p-4 flex flex-col gap-4">
@@ -612,6 +694,7 @@ function StudentsPage() {
         />
       </div>
 
+      {/* Soft Delete Confirmation */}
       <AlertDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {
@@ -639,6 +722,41 @@ function StudentsPage() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {t('students.delete.confirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Permanent Delete Confirmation */}
+      <AlertDialog
+        open={permanentDeleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setPermanentDeleteTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('students.permanentDelete.title')}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('students.permanentDelete.description', {
+                name: permanentDeleteTarget
+                  ? formatPersonName(
+                      permanentDeleteTarget.saintName,
+                      permanentDeleteTarget.fullName,
+                    )
+                  : '',
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handlePermanentDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {t('students.permanentDelete.confirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

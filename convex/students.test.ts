@@ -676,6 +676,402 @@ describe('students backend functions', () => {
     ).rejects.toThrow(STUDENT_ERRORS.NOT_FOUND)
   })
 
+  test('restore mutation', async () => {
+    const t = convexTest(schema, modules)
+
+    const adminId = await t.run(async (ctx) => {
+      return await ctx.db.insert('catechists', {
+        memberId: 'GLV001',
+        fullName: 'Admin',
+        role: 'admin',
+        isActive: true,
+        isDeleted: false,
+      })
+    })
+
+    const studentId = await t.mutation(api.students.create, {
+      requesterId: adminId,
+      fullName: 'Student Restore Test',
+    })
+
+    // Active student cannot be restored
+    await expect(
+      t.mutation(api.students.restore, {
+        requesterId: adminId,
+        studentId,
+      }),
+    ).rejects.toThrow(STUDENT_ERRORS.NOT_FOUND)
+
+    // Soft delete student
+    await t.mutation(api.students.softDelete, {
+      requesterId: adminId,
+      studentId,
+    })
+
+    // Account should be deactivated
+    const accountBefore = await t.run(async (ctx) => {
+      const student = await ctx.db.get('students', studentId)
+      return await ctx.db
+        .query('accounts')
+        .withIndex('by_login_id', (q) =>
+          q.eq('loginId', `STD-${student?.studentCode}`),
+        )
+        .unique()
+    })
+    expect(accountBefore?.isActive).toBe(false)
+
+    // Restore student
+    await t.mutation(api.students.restore, {
+      requesterId: adminId,
+      studentId,
+    })
+
+    const restoredStudent = await t.run(async (ctx) => {
+      return await ctx.db.get('students', studentId)
+    })
+    expect(restoredStudent?.isDeleted).toBe(false)
+
+    const accountAfter = await t.run(async (ctx) => {
+      const student = await ctx.db.get('students', studentId)
+      return await ctx.db
+        .query('accounts')
+        .withIndex('by_login_id', (q) =>
+          q.eq('loginId', `STD-${student?.studentCode}`),
+        )
+        .unique()
+    })
+    expect(accountAfter?.isActive).toBe(true)
+  })
+
+  test('permanentDelete mutation', async () => {
+    const t = convexTest(schema, modules)
+
+    const adminId = await t.run(async (ctx) => {
+      return await ctx.db.insert('catechists', {
+        memberId: 'GLV001',
+        fullName: 'Admin',
+        role: 'admin',
+        isActive: true,
+        isDeleted: false,
+      })
+    })
+
+    const studentId = await t.mutation(api.students.create, {
+      requesterId: adminId,
+      fullName: 'Student Perm Delete Test',
+    })
+
+    // Non-deleted student cannot be permanently deleted
+    await expect(
+      t.mutation(api.students.permanentDelete, {
+        requesterId: adminId,
+        studentId,
+      }),
+    ).rejects.toThrow(STUDENT_ERRORS.NOT_FOUND)
+
+    // Add address, guardian, sacrament
+    await t.mutation(api.students.upsertStudentAddress, {
+      requesterId: adminId,
+      studentId,
+      country: 'VN',
+      city: 'HCM',
+    })
+
+    // Soft delete
+    await t.mutation(api.students.softDelete, {
+      requesterId: adminId,
+      studentId,
+    })
+
+    // Permanent delete
+    await t.mutation(api.students.permanentDelete, {
+      requesterId: adminId,
+      studentId,
+    })
+
+    const deletedRow = await t.run(async (ctx) => {
+      return await ctx.db.get('students', studentId)
+    })
+    expect(deletedRow).toBeNull()
+
+    const addr = await t.query(api.students.getStudentAddress, {
+      requesterId: adminId,
+      studentId,
+    })
+    expect(addr).toBeNull()
+  })
+
+  test('permanentDelete mutation fails if student has enrollment history', async () => {
+    const t = convexTest(schema, modules)
+
+    const adminId = await t.run(async (ctx) => {
+      return await ctx.db.insert('catechists', {
+        memberId: 'GLV001',
+        fullName: 'Admin',
+        role: 'admin',
+        isActive: true,
+        isDeleted: false,
+      })
+    })
+
+    const studentId = await t.mutation(api.students.create, {
+      requesterId: adminId,
+      fullName: 'Student History Test',
+    })
+
+    const academicYearId = await t.run(async (ctx) => {
+      return await ctx.db.insert('academicYears', {
+        name: '2023-2024',
+        startDate: '2023-09-01',
+        endDate: '2024-05-31',
+        timezone: 'Asia/Ho_Chi_Minh',
+        isActive: true,
+        isDeleted: false,
+      })
+    })
+    const branchId = await t.run(async (ctx) => {
+      return await ctx.db.insert('branches', {
+        name: 'Branch 1',
+        sortOrder: 1,
+        isDeleted: false,
+      })
+    })
+    const classId = await t.run(async (ctx) => {
+      return await ctx.db.insert('classes', {
+        branchId,
+        name: 'Class 1',
+        isDeleted: false,
+      })
+    })
+    const classYearId = await t.run(async (ctx) => {
+      return await ctx.db.insert('classYears', {
+        classId,
+        academicYearId,
+        isDeleted: false,
+      })
+    })
+    await t.run(async (ctx) => {
+      await ctx.db.insert('studentClasses', {
+        studentId,
+        classYearId,
+        isPrimaryClass: true,
+        enrolledDate: '2023-01-01',
+        status: 'withdrawn',
+        isDeleted: false,
+      })
+    })
+
+    await t.mutation(api.students.softDelete, {
+      requesterId: adminId,
+      studentId,
+    })
+
+    await expect(
+      t.mutation(api.students.permanentDelete, {
+        requesterId: adminId,
+        studentId,
+      }),
+    ).rejects.toThrow(STUDENT_ERRORS.HAS_HISTORY)
+  })
+
+  test('restore mutation', async () => {
+    const t = convexTest(schema, modules)
+
+    const adminId = await t.run(async (ctx) => {
+      return await ctx.db.insert('catechists', {
+        memberId: 'GLV001',
+        fullName: 'Admin',
+        role: 'admin',
+        isActive: true,
+        isDeleted: false,
+      })
+    })
+
+    const studentId = await t.mutation(api.students.create, {
+      requesterId: adminId,
+      fullName: 'Student Restore Test',
+    })
+
+    // Active student cannot be restored
+    await expect(
+      t.mutation(api.students.restore, {
+        requesterId: adminId,
+        studentId,
+      }),
+    ).rejects.toThrow(STUDENT_ERRORS.NOT_FOUND)
+
+    // Soft delete student
+    await t.mutation(api.students.softDelete, {
+      requesterId: adminId,
+      studentId,
+    })
+
+    // Account should be deactivated
+    const accountBefore = await t.run(async (ctx) => {
+      const student = await ctx.db.get('students', studentId)
+      return await ctx.db
+        .query('accounts')
+        .withIndex('by_login_id', (q) =>
+          q.eq('loginId', `STD-${student?.studentCode}`),
+        )
+        .unique()
+    })
+    expect(accountBefore?.isActive).toBe(false)
+
+    // Restore student
+    await t.mutation(api.students.restore, {
+      requesterId: adminId,
+      studentId,
+    })
+
+    const restoredStudent = await t.run(async (ctx) => {
+      return await ctx.db.get('students', studentId)
+    })
+    expect(restoredStudent?.isDeleted).toBe(false)
+
+    const accountAfter = await t.run(async (ctx) => {
+      const student = await ctx.db.get('students', studentId)
+      return await ctx.db
+        .query('accounts')
+        .withIndex('by_login_id', (q) =>
+          q.eq('loginId', `STD-${student?.studentCode}`),
+        )
+        .unique()
+    })
+    expect(accountAfter?.isActive).toBe(true)
+  })
+
+  test('permanentDelete mutation', async () => {
+    const t = convexTest(schema, modules)
+
+    const adminId = await t.run(async (ctx) => {
+      return await ctx.db.insert('catechists', {
+        memberId: 'GLV001',
+        fullName: 'Admin',
+        role: 'admin',
+        isActive: true,
+        isDeleted: false,
+      })
+    })
+
+    const studentId = await t.mutation(api.students.create, {
+      requesterId: adminId,
+      fullName: 'Student Perm Delete Test',
+    })
+
+    // Non-deleted student cannot be permanently deleted
+    await expect(
+      t.mutation(api.students.permanentDelete, {
+        requesterId: adminId,
+        studentId,
+      }),
+    ).rejects.toThrow(STUDENT_ERRORS.NOT_FOUND)
+
+    // Add address, guardian, sacrament
+    await t.mutation(api.students.upsertStudentAddress, {
+      requesterId: adminId,
+      studentId,
+      country: 'VN',
+      city: 'HCM',
+    })
+
+    // Soft delete
+    await t.mutation(api.students.softDelete, {
+      requesterId: adminId,
+      studentId,
+    })
+
+    // Permanent delete
+    await t.mutation(api.students.permanentDelete, {
+      requesterId: adminId,
+      studentId,
+    })
+
+    const deletedRow = await t.run(async (ctx) => {
+      return await ctx.db.get('students', studentId)
+    })
+    expect(deletedRow).toBeNull()
+
+    const addr = await t.query(api.students.getStudentAddress, {
+      requesterId: adminId,
+      studentId,
+    })
+    expect(addr).toBeNull()
+  })
+
+  test('permanentDelete mutation fails if student has enrollment history', async () => {
+    const t = convexTest(schema, modules)
+
+    const adminId = await t.run(async (ctx) => {
+      return await ctx.db.insert('catechists', {
+        memberId: 'GLV001',
+        fullName: 'Admin',
+        role: 'admin',
+        isActive: true,
+        isDeleted: false,
+      })
+    })
+
+    const studentId = await t.mutation(api.students.create, {
+      requesterId: adminId,
+      fullName: 'Student History Test',
+    })
+
+    const academicYearId = await t.run(async (ctx) => {
+      return await ctx.db.insert('academicYears', {
+        name: '2023-2024',
+        startDate: '2023-09-01',
+        endDate: '2024-05-31',
+        timezone: 'Asia/Ho_Chi_Minh',
+        isActive: true,
+        isDeleted: false,
+      })
+    })
+    const branchId = await t.run(async (ctx) => {
+      return await ctx.db.insert('branches', {
+        name: 'Branch 1',
+        sortOrder: 1,
+        isDeleted: false,
+      })
+    })
+    const classId = await t.run(async (ctx) => {
+      return await ctx.db.insert('classes', {
+        branchId,
+        name: 'Class 1',
+        isDeleted: false,
+      })
+    })
+    const classYearId = await t.run(async (ctx) => {
+      return await ctx.db.insert('classYears', {
+        classId,
+        academicYearId,
+        isDeleted: false,
+      })
+    })
+    await t.run(async (ctx) => {
+      return await ctx.db.insert('studentClasses', {
+        studentId,
+        classYearId,
+        isPrimaryClass: true,
+        enrolledDate: '2023-01-01',
+        status: 'withdrawn',
+        isDeleted: false,
+      })
+    })
+
+    await t.mutation(api.students.softDelete, {
+      requesterId: adminId,
+      studentId,
+    })
+
+    await expect(
+      t.mutation(api.students.permanentDelete, {
+        requesterId: adminId,
+        studentId,
+      }),
+    ).rejects.toThrow(STUDENT_ERRORS.HAS_HISTORY)
+  })
+
   describe('StudentAddress mutations', () => {
     test('upsertStudentAddress and getStudentAddress', async () => {
       const t = convexTest(schema, modules)

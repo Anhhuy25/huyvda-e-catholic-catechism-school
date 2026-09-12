@@ -44,6 +44,7 @@ const CODE_TO_I18N_KEY: Record<string, string> = {
   [STUDENT_ERRORS.IN_USE_BY_ENROLLMENT]: 'students.deleteActiveEnrollmentError',
   [STUDENT_ERRORS.ADDRESS_NOT_FOUND]: 'errors.studentAddressNotFound',
   [STUDENT_ERRORS.EXPORT_UNAUTHORIZED]: 'students.export.unauthorized',
+  [STUDENT_ERRORS.HAS_HISTORY]: 'students.permanentDeleteHasHistoryError',
 
   [CATECHIST_ERRORS.NOT_FOUND]: 'catechists.notFound',
   [CATECHIST_ERRORS.DUPLICATE_MEMBER_ID]: 'errors.catechistMemberIdDuplicate',
