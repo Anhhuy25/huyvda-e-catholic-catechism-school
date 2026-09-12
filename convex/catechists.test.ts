@@ -2775,3 +2775,205 @@ describe('updateWithDetails mutation', () => {
     expect(account?.isActive).toBe(true)
   })
 })
+
+describe('getMySidebarInfo', () => {
+  test('returns saintName from the catechist doc', async () => {
+    const t = convexTest(schema, modules)
+    const catechistId = await t.run(async (ctx) => {
+      return await ctx.db.insert('catechists', {
+        memberId: 'SIDEBAR001',
+        fullName: 'Nguyễn Văn Sidebar',
+        saintName: 'Phêrô',
+        role: 'user',
+        isActive: true,
+        isDeleted: false,
+      })
+    })
+
+    const info = await t.query(api.catechists.getMySidebarInfo, {
+      requesterId: catechistId,
+    })
+
+    expect(info.saintName).toBe('Phêrô')
+    expect(info.isBoardMember).toBe(false)
+    expect(info.branchNames).toEqual([])
+  })
+
+  test('returns undefined saintName when the catechist has none set', async () => {
+    const t = convexTest(schema, modules)
+    const catechistId = await t.run(async (ctx) => {
+      return await ctx.db.insert('catechists', {
+        memberId: 'SIDEBAR002',
+        fullName: 'Trần Văn NoSaint',
+        role: 'user',
+        isActive: true,
+        isDeleted: false,
+      })
+    })
+
+    const info = await t.query(api.catechists.getMySidebarInfo, {
+      requesterId: catechistId,
+    })
+
+    expect(info.saintName).toBeUndefined()
+  })
+
+  test('no academicYearId provided -> isBoardMember false and branchNames empty', async () => {
+    const t = convexTest(schema, modules)
+    const catechistId = await t.run(async (ctx) => {
+      return await ctx.db.insert('catechists', {
+        memberId: 'SIDEBAR003',
+        fullName: 'No Year Provided',
+        role: 'user',
+        isActive: true,
+        isDeleted: false,
+      })
+    })
+
+    const info = await t.query(api.catechists.getMySidebarInfo, {
+      requesterId: catechistId,
+    })
+
+    expect(info.isBoardMember).toBe(false)
+    expect(info.branchNames).toEqual([])
+  })
+
+  test('board member for the given year -> isBoardMember true, branchNames empty even if also branch head', async () => {
+    const t = convexTest(schema, modules)
+    const { catechistId, yearId } = await t.run(async (ctx) => {
+      const catechistId = await ctx.db.insert('catechists', {
+        memberId: 'SIDEBAR004',
+        fullName: 'Board And Branch Head',
+        role: 'user',
+        isActive: true,
+        isDeleted: false,
+      })
+      const yearId = await ctx.db.insert('academicYears', {
+        name: '2023-2024',
+        startDate: '2023-09-01',
+        endDate: '2024-05-31',
+        timezone: 'Asia/Ho_Chi_Minh',
+        isActive: true,
+        isDeleted: false,
+      })
+      const branchId = await ctx.db.insert('branches', {
+        name: 'Chiên Con',
+        sortOrder: 1,
+        isDeleted: false,
+      })
+      await ctx.db.insert('academicYearAssignments', {
+        academicYearId: yearId,
+        catechistId,
+        assignmentType: 'board_member',
+        isDeleted: false,
+      })
+      await ctx.db.insert('branchAssignments', {
+        academicYearId: yearId,
+        catechistId,
+        branchId,
+        isDeleted: false,
+      })
+      return { catechistId, yearId }
+    })
+
+    const info = await t.query(api.catechists.getMySidebarInfo, {
+      requesterId: catechistId,
+      academicYearId: yearId,
+    })
+
+    expect(info.isBoardMember).toBe(true)
+    expect(info.branchNames).toEqual([])
+  })
+
+  test('branch head (not board member) for the given year -> branchNames contains the branch name', async () => {
+    const t = convexTest(schema, modules)
+    const { catechistId, yearId } = await t.run(async (ctx) => {
+      const catechistId = await ctx.db.insert('catechists', {
+        memberId: 'SIDEBAR005',
+        fullName: 'Branch Head Only',
+        role: 'user',
+        isActive: true,
+        isDeleted: false,
+      })
+      const yearId = await ctx.db.insert('academicYears', {
+        name: '2023-2024',
+        startDate: '2023-09-01',
+        endDate: '2024-05-31',
+        timezone: 'Asia/Ho_Chi_Minh',
+        isActive: true,
+        isDeleted: false,
+      })
+      const branchId = await ctx.db.insert('branches', {
+        name: 'Chiên Con',
+        sortOrder: 1,
+        isDeleted: false,
+      })
+      await ctx.db.insert('branchAssignments', {
+        academicYearId: yearId,
+        catechistId,
+        branchId,
+        isDeleted: false,
+      })
+      return { catechistId, yearId }
+    })
+
+    const info = await t.query(api.catechists.getMySidebarInfo, {
+      requesterId: catechistId,
+      academicYearId: yearId,
+    })
+
+    expect(info.isBoardMember).toBe(false)
+    expect(info.branchNames).toEqual(['Chiên Con'])
+  })
+
+  test('not board member and not branch head -> isBoardMember false, branchNames empty', async () => {
+    const t = convexTest(schema, modules)
+    const { catechistId, yearId } = await t.run(async (ctx) => {
+      const catechistId = await ctx.db.insert('catechists', {
+        memberId: 'SIDEBAR006',
+        fullName: 'Plain Catechist',
+        role: 'user',
+        isActive: true,
+        isDeleted: false,
+      })
+      const yearId = await ctx.db.insert('academicYears', {
+        name: '2023-2024',
+        startDate: '2023-09-01',
+        endDate: '2024-05-31',
+        timezone: 'Asia/Ho_Chi_Minh',
+        isActive: true,
+        isDeleted: false,
+      })
+      return { catechistId, yearId }
+    })
+
+    const info = await t.query(api.catechists.getMySidebarInfo, {
+      requesterId: catechistId,
+      academicYearId: yearId,
+    })
+
+    expect(info.isBoardMember).toBe(false)
+    expect(info.branchNames).toEqual([])
+  })
+
+  test('invalid requesterId throws via assertValidCatechist', async () => {
+    const t = convexTest(schema, modules)
+    const catechistId = await t.run(async (ctx) => {
+      const id = await ctx.db.insert('catechists', {
+        memberId: 'SIDEBAR_TMP',
+        fullName: 'Temp',
+        role: 'user',
+        isActive: true,
+        isDeleted: false,
+      })
+      await ctx.db.delete('catechists', id)
+      return id
+    })
+
+    await expect(
+      t.query(api.catechists.getMySidebarInfo, {
+        requesterId: catechistId,
+      }),
+    ).rejects.toThrow(AUTHZ_ERRORS.CATECHIST_NOT_FOUND)
+  })
+})

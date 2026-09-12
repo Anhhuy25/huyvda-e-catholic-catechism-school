@@ -5450,3 +5450,73 @@ describe('Candidate 5: unit tests against deepened backend seams', () => {
     expect(cat3Get?.guardians[0].contacts).toEqual([])
   })
 })
+
+describe('getMySidebarInfo', () => {
+  test('returns saintName from the student doc', async () => {
+    const t = convexTest(schema, modules)
+    const catechistId = await t.run(async (ctx) => {
+      return await ctx.db.insert('catechists', {
+        memberId: 'GLV_SIDEBAR',
+        fullName: 'Admin',
+        role: 'admin',
+        isActive: true,
+        isDeleted: false,
+      })
+    })
+    const studentId = await t.mutation(api.students.create, {
+      requesterId: catechistId,
+      fullName: 'Student Sidebar',
+      saintName: 'Maria',
+    })
+
+    const info = await t.query(api.students.getMySidebarInfo, {
+      requesterId: studentId,
+    })
+
+    expect(info.saintName).toBe('Maria')
+  })
+
+  test('returns undefined saintName when the student has none set', async () => {
+    const t = convexTest(schema, modules)
+    const catechistId = await t.run(async (ctx) => {
+      return await ctx.db.insert('catechists', {
+        memberId: 'GLV_SIDEBAR2',
+        fullName: 'Admin',
+        role: 'admin',
+        isActive: true,
+        isDeleted: false,
+      })
+    })
+    const studentId = await t.mutation(api.students.create, {
+      requesterId: catechistId,
+      fullName: 'Student No Saint',
+    })
+
+    const info = await t.query(api.students.getMySidebarInfo, {
+      requesterId: studentId,
+    })
+
+    expect(info.saintName).toBeUndefined()
+  })
+
+  test('invalid requesterId throws via assertValidStudent', async () => {
+    const t = convexTest(schema, modules)
+    const studentId = await t.run(async (ctx) => {
+      const id = await ctx.db.insert('students', {
+        studentCode: 'TMP001',
+        fullName: 'Temp',
+        isActive: true,
+        createdAt: Date.now(),
+        isDeleted: false,
+      })
+      await ctx.db.delete('students', id)
+      return id
+    })
+
+    await expect(
+      t.query(api.students.getMySidebarInfo, {
+        requesterId: studentId,
+      }),
+    ).rejects.toThrow(AUTHZ_ERRORS.STUDENT_NOT_FOUND)
+  })
+})

@@ -437,6 +437,14 @@ export const exportList = query({
   },
 })
 
+export const getMySidebarInfo = query({
+  args: { requesterId: v.id('students') },
+  handler: async (ctx, args) => {
+    const student = await assertValidStudent(ctx, args.requesterId)
+    return { saintName: student.saintName }
+  },
+})
+
 export const get = query({
   args: { requesterId: v.id('catechists'), id: v.id('students') },
   handler: async (ctx, args) => {

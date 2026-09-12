@@ -800,6 +800,8 @@
   "classes.bulkCreate.imported": "Đã tải danh sách lớp từ năm học đã chọn.",
   "catechists.title": "Giáo Lý Viên",
   "catechists.subtitle": "Quản lý hồ sơ giáo lý viên",
+  "nav.role.boardMember": "Ban Điều Hành",
+  "nav.role.branchManager": "Trưởng Ngành - {{branchName}}",
   "catechists.col.memberId": "Mã số",
   "catechists.col.fullName": "Họ và tên",
   "catechists.col.saintName": "Tên Thánh",

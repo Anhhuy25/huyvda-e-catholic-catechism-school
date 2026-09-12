@@ -799,6 +799,8 @@
   "classes.bulkCreate.imported": "Loaded classes from the selected academic year.",
   "catechists.title": "Catechists",
   "catechists.subtitle": "Manage catechist profiles",
+  "nav.role.boardMember": "Board Member",
+  "nav.role.branchManager": "Branch Manager - {{branchName}}",
   "catechists.col.memberId": "Member ID",
   "catechists.col.fullName": "Full Name",
   "catechists.col.saintName": "Saint Name",

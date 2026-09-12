@@ -139,6 +139,37 @@ export const getClassAssignments = query({
   },
 })
 
+export const getMySidebarInfo = query({
+  args: {
+    requesterId: v.id('catechists'),
+    academicYearId: v.optional(v.id('academicYears')),
+  },
+  handler: async (ctx, args) => {
+    const requester = await assertValidCatechist(ctx, args.requesterId)
+    const perms = await getEffectivePermissions(
+      ctx,
+      args.requesterId,
+      args.academicYearId,
+    )
+
+    let branchNames: Array<string> = []
+    if (!perms.isBoardMember && perms.branchHeadOf.length > 0) {
+      const branches = await Promise.all(
+        perms.branchHeadOf.map((branchId) => ctx.db.get('branches', branchId)),
+      )
+      branchNames = branches
+        .filter((b): b is NonNullable<typeof b> => !!b && !b.isDeleted)
+        .map((b) => b.name)
+    }
+
+    return {
+      saintName: requester.saintName,
+      isBoardMember: perms.isBoardMember,
+      branchNames,
+    }
+  },
+})
+
 export const getCatechistDetail = query({
   args: {
     requesterId: v.id('catechists'),
