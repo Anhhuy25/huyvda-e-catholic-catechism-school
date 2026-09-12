@@ -15,6 +15,7 @@ import {
   MessageCircle,
   Pencil,
   Phone,
+  Trash2,
   Users,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -93,8 +94,10 @@ function CatechistDetailPage() {
   const [loginAsOpen, setLoginAsOpen] = React.useState(false)
   const [loginIdOpen, setLoginIdOpen] = React.useState(false)
   const [isLoggingIn, setIsLoggingIn] = React.useState(false)
+  const [confirmDelete, setConfirmDelete] = React.useState(false)
 
   const loginAsCatechist = useMutation(api.accountAdmin.loginAsCatechist)
+  const deleteMutation = useMutation(api.catechists.softDelete)
 
   const data = useQuery(
     api.catechists.get,
@@ -168,6 +171,19 @@ function CatechistDetailPage() {
     }
   }
 
+  const handleDelete = async () => {
+    if (!data || !requesterId) return
+    try {
+      await deleteMutation({ requesterId, catechistId: data._id })
+      toast.success(t('catechists.deleted'))
+      void navigate({ to: '/catechists' })
+    } catch (err) {
+      toast.error(translateConvexError(err, t, 'catechists.deleteError'))
+    } finally {
+      setConfirmDelete(false)
+    }
+  }
+
   const actions = canManage ? (
     <div className="flex items-center gap-2">
       {canLoginAs && (
@@ -189,6 +205,10 @@ function CatechistDetailPage() {
       >
         <Pencil className="mr-2 size-4" />
         {t('common.edit')}
+      </Button>
+      <Button variant="destructive" onClick={() => setConfirmDelete(true)}>
+        <Trash2 className="mr-2 size-4" />
+        {t('common.delete')}
       </Button>
     </div>
   ) : undefined
@@ -523,6 +543,34 @@ function CatechistDetailPage() {
             <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={handleLoginAs} disabled={isLoggingIn}>
               {t('adminAccounts.actions.loginAs')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={confirmDelete}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDelete(false)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('catechists.delete.title')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {data &&
+                t('catechists.delete.description', {
+                  name: formatPersonName(data.saintName, data.fullName),
+                })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {t('catechists.delete.confirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

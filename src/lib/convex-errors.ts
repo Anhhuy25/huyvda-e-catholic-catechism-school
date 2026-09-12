@@ -56,6 +56,8 @@ const CODE_TO_I18N_KEY: Record<string, string> = {
   [CATECHIST_ERRORS.OWN_CONTACT_ONLY]: 'errors.ownContactOnly',
   [CATECHIST_ERRORS.OWN_PROFILE_PHOTO_UPDATE_ONLY]: 'errors.ownPhotoUpdateOnly',
   [CATECHIST_ERRORS.OWN_PROFILE_PHOTO_DELETE_ONLY]: 'errors.ownPhotoDeleteOnly',
+  [CATECHIST_ERRORS.IN_USE_BY_ASSIGNMENT]:
+    'catechists.deleteActiveAssignmentError',
 
   [GUARDIAN_ERRORS.NOT_FOUND]: 'errors.guardianNotFound',
   [GUARDIAN_ERRORS.CONTACT_NOT_FOUND]: 'errors.guardianContactNotFound',

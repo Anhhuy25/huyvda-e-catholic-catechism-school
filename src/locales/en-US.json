@@ -843,6 +843,7 @@
   "catechists.delete.confirm": "Delete Catechist",
   "catechists.deleted": "Catechist deleted successfully",
   "catechists.deleteError": "Failed to delete catechist",
+  "catechists.deleteActiveAssignmentError": "Cannot delete catechist with active class assignments",
   "catechists.notFound": "Catechist not found",
   "catechists.detail.title": "Catechist Details",
   "catechists.edit.title": "Edit Catechist",

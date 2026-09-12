@@ -878,7 +878,30 @@ export const softDelete = mutation({
     if (!catechist || catechist.isDeleted) {
       throw new Error(CATECHIST_ERRORS.NOT_FOUND)
     }
+
+    // Guard: cannot delete catechist with active class assignments
+    const assignments = await ctx.db
+      .query('classCatechists')
+      .withIndex('by_catechist_id', (q) =>
+        q.eq('catechistId', args.catechistId),
+      )
+      .collect()
+
+    if (assignments.some((a) => !a.isDeleted)) {
+      throw new Error(CATECHIST_ERRORS.IN_USE_BY_ASSIGNMENT)
+    }
+
     await ctx.db.patch('catechists', args.catechistId, { isDeleted: true })
+
+    const account = await ctx.db
+      .query('accounts')
+      .withIndex('by_login_id', (q) =>
+        q.eq('loginId', getCatechistLoginId(catechist.memberId)),
+      )
+      .unique()
+    if (account && !account.isDeleted && account.isActive) {
+      await ctx.db.patch('accounts', account._id, { isActive: false })
+    }
   },
 })
 

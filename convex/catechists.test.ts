@@ -4,6 +4,7 @@ import { convexTest } from 'convex-test'
 /* eslint-disable no-shadow */
 import { describe, expect, test } from 'vitest'
 import { api } from './_generated/api'
+import { getCatechistLoginId } from './lib/accountPrefix'
 import { AUTHZ_ERRORS, CATECHIST_ERRORS } from './lib/errors'
 import schema from './schema'
 import type { Id } from './_generated/dataModel'
@@ -653,6 +654,266 @@ describe('admin CRUD', () => {
 
     const updated = await t.run(async (ctx) => ctx.db.get('catechists', userId))
     expect(updated?.isDeleted).toBe(true)
+  })
+
+  test('softDelete throws IN_USE_BY_ASSIGNMENT when catechist has an active class assignment', async () => {
+    const t = convexTest(schema, modules)
+    const { adminId, userId } = await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert('catechists', {
+        memberId: 'ADMIN',
+        fullName: 'Admin',
+        role: 'admin',
+        isActive: true,
+        isDeleted: false,
+      })
+      const userId = await ctx.db.insert('catechists', {
+        memberId: 'USER',
+        fullName: 'User',
+        role: 'user',
+        isActive: true,
+        isDeleted: false,
+      })
+      return { adminId, userId }
+    })
+
+    const academicYearId = await t.run(async (ctx) => {
+      return await ctx.db.insert('academicYears', {
+        name: '2023-2024',
+        startDate: '2023-09-01',
+        endDate: '2024-05-31',
+        timezone: 'Asia/Ho_Chi_Minh',
+        isActive: true,
+        isDeleted: false,
+      })
+    })
+
+    const branchId = await t.run(async (ctx) => {
+      return await ctx.db.insert('branches', {
+        name: 'Branch 1',
+        sortOrder: 1,
+        isDeleted: false,
+      })
+    })
+
+    const classId = await t.run(async (ctx) => {
+      return await ctx.db.insert('classes', {
+        branchId,
+        name: 'Class 1',
+        isDeleted: false,
+      })
+    })
+
+    const classYearId = await t.run(async (ctx) => {
+      return await ctx.db.insert('classYears', {
+        classId,
+        academicYearId,
+        isDeleted: false,
+      })
+    })
+
+    await t.run(async (ctx) => {
+      return await ctx.db.insert('classCatechists', {
+        catechistId: userId,
+        classYearId,
+        academicYearId,
+        role: 'homeroom',
+        isDeleted: false,
+      })
+    })
+
+    await expect(
+      t.mutation(api.catechists.softDelete, {
+        requesterId: adminId,
+        catechistId: userId,
+      }),
+    ).rejects.toThrow(CATECHIST_ERRORS.IN_USE_BY_ASSIGNMENT)
+
+    const stillActive = await t.run(async (ctx) =>
+      ctx.db.get('catechists', userId),
+    )
+    expect(stillActive?.isDeleted).toBe(false)
+  })
+
+  test('softDelete succeeds when only soft-deleted class assignments exist', async () => {
+    const t = convexTest(schema, modules)
+    const { adminId, userId } = await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert('catechists', {
+        memberId: 'ADMIN',
+        fullName: 'Admin',
+        role: 'admin',
+        isActive: true,
+        isDeleted: false,
+      })
+      const userId = await ctx.db.insert('catechists', {
+        memberId: 'USER',
+        fullName: 'User',
+        role: 'user',
+        isActive: true,
+        isDeleted: false,
+      })
+      return { adminId, userId }
+    })
+
+    const academicYearId = await t.run(async (ctx) => {
+      return await ctx.db.insert('academicYears', {
+        name: '2023-2024',
+        startDate: '2023-09-01',
+        endDate: '2024-05-31',
+        timezone: 'Asia/Ho_Chi_Minh',
+        isActive: true,
+        isDeleted: false,
+      })
+    })
+
+    const branchId = await t.run(async (ctx) => {
+      return await ctx.db.insert('branches', {
+        name: 'Branch 1',
+        sortOrder: 1,
+        isDeleted: false,
+      })
+    })
+
+    const classId = await t.run(async (ctx) => {
+      return await ctx.db.insert('classes', {
+        branchId,
+        name: 'Class 1',
+        isDeleted: false,
+      })
+    })
+
+    const classYearId = await t.run(async (ctx) => {
+      return await ctx.db.insert('classYears', {
+        classId,
+        academicYearId,
+        isDeleted: false,
+      })
+    })
+
+    await t.run(async (ctx) => {
+      return await ctx.db.insert('classCatechists', {
+        catechistId: userId,
+        classYearId,
+        academicYearId,
+        role: 'co_teacher',
+        isDeleted: true,
+      })
+    })
+
+    await t.mutation(api.catechists.softDelete, {
+      requesterId: adminId,
+      catechistId: userId,
+    })
+
+    const updated = await t.run(async (ctx) => ctx.db.get('catechists', userId))
+    expect(updated?.isDeleted).toBe(true)
+  })
+
+  test('softDelete deactivates an active account as a side effect', async () => {
+    const t = convexTest(schema, modules)
+    const { adminId, userId } = await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert('catechists', {
+        memberId: 'ADMIN',
+        fullName: 'Admin',
+        role: 'admin',
+        isActive: true,
+        isDeleted: false,
+      })
+      const userId = await ctx.db.insert('catechists', {
+        memberId: 'USER',
+        fullName: 'User',
+        role: 'user',
+        isActive: true,
+        isDeleted: false,
+      })
+      return { adminId, userId }
+    })
+
+    const accountId = await t.run(async (ctx) => {
+      return await ctx.db.insert('accounts', {
+        loginId: getCatechistLoginId('USER'),
+        passwordHash: 'hashed',
+        accountType: 'catechist',
+        userRefId: userId,
+        isActive: true,
+        createdAt: Date.now(),
+        isDeleted: false,
+      })
+    })
+
+    await t.mutation(api.catechists.softDelete, {
+      requesterId: adminId,
+      catechistId: userId,
+    })
+
+    const updatedAccount = await t.run(async (ctx) =>
+      ctx.db.get('accounts', accountId),
+    )
+    expect(updatedAccount?.isActive).toBe(false)
+  })
+
+  test('softDelete succeeds without touching accounts when none exists or already inactive', async () => {
+    const t = convexTest(schema, modules)
+    const { adminId, userId, inactiveUserId, inactiveAccountId } = await t.run(
+      async (ctx) => {
+        const adminId = await ctx.db.insert('catechists', {
+          memberId: 'ADMIN',
+          fullName: 'Admin',
+          role: 'admin',
+          isActive: true,
+          isDeleted: false,
+        })
+        // No account at all
+        const userId = await ctx.db.insert('catechists', {
+          memberId: 'USER',
+          fullName: 'User',
+          role: 'user',
+          isActive: true,
+          isDeleted: false,
+        })
+        // Already-inactive account
+        const inactiveUserId = await ctx.db.insert('catechists', {
+          memberId: 'USER2',
+          fullName: 'User 2',
+          role: 'user',
+          isActive: true,
+          isDeleted: false,
+        })
+        const inactiveAccountId = await ctx.db.insert('accounts', {
+          loginId: getCatechistLoginId('USER2'),
+          passwordHash: 'hashed',
+          accountType: 'catechist',
+          userRefId: inactiveUserId,
+          isActive: false,
+          createdAt: Date.now(),
+          isDeleted: false,
+        })
+        return { adminId, userId, inactiveUserId, inactiveAccountId }
+      },
+    )
+
+    // No account -> succeeds without error
+    await t.mutation(api.catechists.softDelete, {
+      requesterId: adminId,
+      catechistId: userId,
+    })
+    const deletedNoAccount = await t.run(async (ctx) =>
+      ctx.db.get('catechists', userId),
+    )
+    expect(deletedNoAccount?.isDeleted).toBe(true)
+
+    // Already-inactive account -> succeeds, account remains inactive/untouched
+    await t.mutation(api.catechists.softDelete, {
+      requesterId: adminId,
+      catechistId: inactiveUserId,
+    })
+    const deletedWithInactiveAccount = await t.run(async (ctx) =>
+      ctx.db.get('catechists', inactiveUserId),
+    )
+    expect(deletedWithInactiveAccount?.isDeleted).toBe(true)
+    const account = await t.run(async (ctx) =>
+      ctx.db.get('accounts', inactiveAccountId),
+    )
+    expect(account?.isActive).toBe(false)
   })
 
   test('softDeleteAddress sets isDeleted true', async () => {
