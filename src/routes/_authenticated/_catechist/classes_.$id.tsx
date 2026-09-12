@@ -136,10 +136,10 @@ function ClassDetailPage() {
     api.classes.getClassDetails,
     requesterId && selectedYearId
       ? {
-          requesterId,
-          classId: id as Id<'classes'>,
-          academicYearId: selectedYearId,
-        }
+        requesterId,
+        classId: id as Id<'classes'>,
+        academicYearId: selectedYearId,
+      }
       : 'skip',
   )
 
@@ -152,11 +152,11 @@ function ClassDetailPage() {
     api.calendarEvents.list,
     requesterId && selectedYearId && classDetails?.classYear
       ? {
-          requesterId,
-          academicYearId: selectedYearId,
-          dateFrom: today,
-          dateTo,
-        }
+        requesterId,
+        academicYearId: selectedYearId,
+        dateFrom: today,
+        dateTo,
+      }
       : 'skip',
   )
   const classEventsScoped = React.useMemo(
@@ -734,44 +734,46 @@ function ClassDetailPage() {
 
             <TabsContent value="students" className="mt-6">
               <div className="mb-4 flex flex-wrap justify-end gap-2">
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={
-                      <Button variant="outline">
-                        <Download className="size-4" />
-                        {t('classes.export.title')}
-                      </Button>
-                    }
-                  />
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      onClick={() =>
-                        exportCsv(
-                          exportRows,
-                          `${classDetails.class.name}-students.csv`,
-                          exportHeaders,
-                        )
+                {canManage && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button variant="outline">
+                          <Download className="size-4" />
+                          {t('classes.export.title')}
+                        </Button>
                       }
-                    >
-                      {t('classes.export.csv')}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => {
-                        if (!pdfMeta) return
-                        exportPdf(
-                          exportRows,
-                          classDetails.class.name,
-                          pdfMeta,
-                          `${classDetails.class.name}-students.pdf`,
-                          exportHeaders,
-                        )
-                      }}
-                    >
-                      {t('classes.export.pdf')}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                {isPrimaryClass && (
+                    />
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() =>
+                          exportCsv(
+                            exportRows,
+                            `${classDetails.class.name}-students.csv`,
+                            exportHeaders,
+                          )
+                        }
+                      >
+                        {t('classes.export.csv')}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => {
+                          if (!pdfMeta) return
+                          exportPdf(
+                            exportRows,
+                            classDetails.class.name,
+                            pdfMeta,
+                            `${classDetails.class.name}-students.pdf`,
+                            exportHeaders,
+                          )
+                        }}
+                      >
+                        {t('classes.export.pdf')}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+                {isPrimaryClass && canManage && (
                   <DropdownMenu>
                     <DropdownMenuTrigger
                       render={
@@ -788,7 +790,7 @@ function ClassDetailPage() {
                         <Printer className="size-4" />
                         {t('printCards.buttonLabel')}
                       </DropdownMenuItem>
-                      {canManage && !isInactive && (
+                      {!isInactive && (
                         <DropdownMenuItem
                           render={
                             <Link
@@ -915,6 +917,7 @@ function ClassDetailPage() {
                       classId={id as Id<'classes'>}
                       academicYearId={selectedYearId}
                       requesterId={requesterId}
+                      canManage={canManage && !isInactive}
                     />
                   </TabsContent>
                 </Tabs>
@@ -987,9 +990,9 @@ function ClassDetailPage() {
                   {t('classes.enrollment.remove.description', {
                     student: removeTarget
                       ? formatPersonName(
-                          removeTarget.student?.saintName ?? null,
-                          removeTarget.student?.fullName ?? '',
-                        )
+                        removeTarget.student?.saintName ?? null,
+                        removeTarget.student?.fullName ?? '',
+                      )
                       : '',
                     class: classDetails.class.name,
                   })}

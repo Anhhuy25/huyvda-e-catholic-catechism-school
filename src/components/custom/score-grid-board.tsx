@@ -1096,10 +1096,12 @@ export function ScoreGridBoard({
   return (
     <div className="flex w-full flex-col gap-4 min-w-0">
       <div className="flex flex-wrap gap-2 items-center justify-end">
-        <Button variant="outline" size="sm" onClick={handleExportCsv}>
-          <Download className="h-4 w-4" />
-          <span>{t('classes.export.csv')}</span>
-        </Button>
+        {canManage && (
+          <Button variant="outline" size="sm" onClick={handleExportCsv}>
+            <Download className="h-4 w-4" />
+            <span>{t('classes.export.csv')}</span>
+          </Button>
+        )}
         {canManage && (
           <Link to="/classes/$id/exams/create" params={{ id: classId }}>
             <Button size="sm">

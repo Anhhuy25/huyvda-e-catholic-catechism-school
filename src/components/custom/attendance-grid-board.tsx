@@ -713,10 +713,12 @@ export function AttendanceGridBoard({
       )}
 
       <div className="flex flex-wrap justify-end gap-2 items-center">
-        <Button variant="outline" size="sm" onClick={handleExportCsv}>
-          <Download className="h-4 w-4" />
-          <span>{t('classes.export.csv')}</span>
-        </Button>
+        {canManage && (
+          <Button variant="outline" size="sm" onClick={handleExportCsv}>
+            <Download className="h-4 w-4" />
+            <span>{t('classes.export.csv')}</span>
+          </Button>
+        )}
         <Button
           variant="outline"
           size="sm"
