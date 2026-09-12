@@ -492,6 +492,20 @@ function ClassDetailPage() {
     )
   }
 
+  if (classDetails.classYear !== null && !canManage && !isAdmin(user)) {
+    return (
+      <div className="flex flex-col gap-6">
+        <PageHeader icon={GraduationCap} title={classDetails.class.name} />
+        <Alert variant="destructive">
+          <AlertCircle className="size-4 shrink-0" />
+          <AlertDescription>
+            {t('classes.detail.accessDenied')}
+          </AlertDescription>
+        </Alert>
+      </div>
+    )
+  }
+
   const year =
     selectedYearId && selectedYearId.length > 0
       ? selectedYearId.substring(0, 4)

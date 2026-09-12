@@ -654,6 +654,7 @@
   "classes.detail.tabs.attendance": "Attendance",
   "classes.detail.notActivated": "This class has not been activated or scheduled for the selected academic year ({{year}}).",
   "classes.detail.pastYearWarning": "This class belongs to an inactive academic year and cannot be modified.",
+  "classes.detail.accessDenied": "You are not in charge of this class, so you cannot view its information. Contact your branch or board manager if you believe this is a mistake.",
   "classes.detail.placeholder.comingSoon": "Feature Coming Soon",
   "classes.detail.placeholder.desc": "This section will be available once the grading and attendance setups are complete.",
   "classes.export.title": "Export",
