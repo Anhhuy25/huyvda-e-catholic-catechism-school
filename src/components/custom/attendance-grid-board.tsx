@@ -465,6 +465,7 @@ export function AttendanceGridBoard({
   }, [visibleSessions, semesterOptions])
 
   const hasSemesterGroups = semesterOptions.length > 0
+  const hasNoSessions = visibleSessions.length === 0
 
   // Group each semester's sessions by month-year (scoped to the semester so
   // the same month-year label appearing in two different semesters doesn't
@@ -843,6 +844,17 @@ export function AttendanceGridBoard({
                         hasSemesterGroups ? 'top-[76px]' : 'top-[38px]'
                       }`}
                     />
+                    {hasNoSessions && (
+                      <th
+                        className={`sticky z-30 border bg-background p-2 text-center text-xs text-muted-foreground ${
+                          hasSemesterGroups ? 'top-[76px]' : 'top-[38px]'
+                        }`}
+                      >
+                        {t('attendance.grid.noSessions', {
+                          defaultValue: 'No session yet',
+                        })}
+                      </th>
+                    )}
                     {visibleSessions.map((session) => (
                       <th
                         key={session._id}
@@ -952,6 +964,11 @@ export function AttendanceGridBoard({
                             </div>
                           </div>
                         </td>
+                        {hasNoSessions && (
+                          <td className="border p-1 text-center text-xs text-muted-foreground">
+                            —
+                          </td>
+                        )}
                         {visibleSessions.map((session) => {
                           const cellKey = `${student.studentClassId}_${session._id}`
                           const record = gridData.attendanceMap[
