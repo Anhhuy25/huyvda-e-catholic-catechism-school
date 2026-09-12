@@ -136,10 +136,10 @@ function ClassDetailPage() {
     api.classes.getClassDetails,
     requesterId && selectedYearId
       ? {
-        requesterId,
-        classId: id as Id<'classes'>,
-        academicYearId: selectedYearId,
-      }
+          requesterId,
+          classId: id as Id<'classes'>,
+          academicYearId: selectedYearId,
+        }
       : 'skip',
   )
 
@@ -152,11 +152,11 @@ function ClassDetailPage() {
     api.calendarEvents.list,
     requesterId && selectedYearId && classDetails?.classYear
       ? {
-        requesterId,
-        academicYearId: selectedYearId,
-        dateFrom: today,
-        dateTo,
-      }
+          requesterId,
+          academicYearId: selectedYearId,
+          dateFrom: today,
+          dateTo,
+        }
       : 'skip',
   )
   const classEventsScoped = React.useMemo(
@@ -990,9 +990,9 @@ function ClassDetailPage() {
                   {t('classes.enrollment.remove.description', {
                     student: removeTarget
                       ? formatPersonName(
-                        removeTarget.student?.saintName ?? null,
-                        removeTarget.student?.fullName ?? '',
-                      )
+                          removeTarget.student?.saintName ?? null,
+                          removeTarget.student?.fullName ?? '',
+                        )
                       : '',
                     class: classDetails.class.name,
                   })}
