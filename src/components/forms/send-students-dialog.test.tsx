@@ -244,6 +244,94 @@ describe('SendStudentsDialog', () => {
     ).toBeInTheDocument()
   })
 
+  test('excludes unenrolled, inactive, soft-deleted, and null students from the list', () => {
+    const unenrolledStudents = [
+      ...mockStudents,
+      {
+        enrollment: {
+          _id: 'sc4' as Id<'studentClasses'>,
+          status: 'on_leave' as const,
+          enrolledDate: '2024-09-01',
+        },
+        student: {
+          _id: 's4' as Id<'students'>,
+          studentCode: 'HS004',
+          fullName: 'Pham Van D',
+          saintName: 'Anna',
+          dateOfBirth: '2015-04-04',
+          gender: 'female',
+          isActive: true,
+          isDeleted: false,
+          createdAt: 126,
+        } as Doc<'students'>,
+      },
+      {
+        enrollment: {
+          _id: 'sc5' as Id<'studentClasses'>,
+          status: 'active' as const,
+          enrolledDate: '2024-09-01',
+        },
+        student: {
+          _id: 's5' as Id<'students'>,
+          studentCode: 'HS005',
+          fullName: 'Hoang Van E',
+          saintName: 'Teresa',
+          dateOfBirth: '2015-05-05',
+          gender: 'female',
+          isActive: false,
+          isDeleted: false,
+          createdAt: 127,
+        } as Doc<'students'>,
+      },
+      {
+        enrollment: {
+          _id: 'sc6' as Id<'studentClasses'>,
+          status: 'active' as const,
+          enrolledDate: '2024-09-01',
+        },
+        student: {
+          _id: 's6' as Id<'students'>,
+          studentCode: 'HS006',
+          fullName: 'Ngo Van F',
+          saintName: 'Phao-lo',
+          dateOfBirth: '2015-06-06',
+          gender: 'male',
+          isActive: true,
+          isDeleted: true,
+          createdAt: 128,
+        } as Doc<'students'>,
+      },
+      {
+        enrollment: {
+          _id: 'sc7' as Id<'studentClasses'>,
+          status: 'active' as const,
+          enrolledDate: '2024-09-01',
+        },
+        student: null,
+      },
+    ]
+
+    render(
+      <SendStudentsDialog
+        isOpen={true}
+        onOpenChange={mockOnOpenChange}
+        currentClassYearId={currentClassYearId}
+        currentClassName={currentClassName}
+        students={unenrolledStudents}
+      />,
+    )
+
+    // Active & enrolled students should be present
+    expect(screen.getByText('Giuse Nguyen Van A')).toBeInTheDocument()
+    expect(screen.getByText('Maria Le Thi B')).toBeInTheDocument()
+
+    // Non-active, on_leave, withdrawn, inactive, deleted, or null students should not be present
+    expect(screen.queryByText('Phero Tran Van C')).toBeNull() // withdrawn
+    expect(screen.queryByText('Anna Pham Van D')).toBeNull() // on_leave
+    expect(screen.queryByText('Teresa Hoang Van E')).toBeNull() // isActive: false
+    expect(screen.queryByText('Phao-lo Ngo Van F')).toBeNull() // isDeleted: true
+  })
+
   test('displays primary class move notice when primary target class is selected', async () => {
     render(
       <SendStudentsDialog
