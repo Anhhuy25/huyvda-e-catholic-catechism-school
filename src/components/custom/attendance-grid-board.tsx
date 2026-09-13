@@ -853,9 +853,7 @@ export function AttendanceGridBoard({
                       {hasNoSessions && t('attendance.grid.studentName')}
                     </th>
                     {hasNoSessions && (
-                      <th
-                        className="sticky top-0 z-30 border bg-background p-2 text-center text-xs text-muted-foreground"
-                      >
+                      <th className="sticky top-0 z-30 border bg-background p-2 text-center text-xs text-muted-foreground">
                         {t('attendance.grid.noSessions', {
                           defaultValue: 'No session yet',
                         })}

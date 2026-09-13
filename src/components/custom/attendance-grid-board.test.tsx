@@ -201,7 +201,9 @@ describe('AttendanceGridBoard', () => {
 
       expect(screen.getByRole('table')).toBeInTheDocument()
       expect(screen.getByText('attendance.grid.noSessions')).toBeInTheDocument()
-      expect(screen.getByText('attendance.grid.studentName')).toBeInTheDocument()
+      expect(
+        screen.getByText('attendance.grid.studentName'),
+      ).toBeInTheDocument()
       expect(container.querySelectorAll('thead tr')).toHaveLength(1)
     })
   })
