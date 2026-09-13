@@ -795,8 +795,8 @@ export function AttendanceGridBoard({
             <div className="overflow-auto min-w-0 w-full h-full scroll-fade">
               <table className="border-collapse w-full">
                 <thead className="z-10 relative drop-shadow-xl">
-                  {/* Header Row 1: Semester grouping (only when semesters exist) */}
-                  {hasSemesterGroups && (
+                  {/* Header Row 1: Semester grouping (only when semesters exist and sessions exist) */}
+                  {hasSemesterGroups && !hasNoSessions && (
                     <tr className="">
                       <th className="sticky left-0 top-0 z-40 border bg-background p-2 text-left text-sm font-semibold">
                         {t('attendance.grid.studentName')}
@@ -814,41 +814,47 @@ export function AttendanceGridBoard({
                   )}
 
                   {/* Header Row 2: Month-Year */}
-                  <tr className=" border">
-                    <th
-                      className={`sticky left-0 z-40 border bg-background p-2 text-sm font-semibold text-right ${
-                        hasSemesterGroups ? 'top-[38px]' : 'top-0'
-                      }`}
-                    >
-                      {!hasSemesterGroups && t('attendance.grid.studentName')}
-                    </th>
-                    {monthGroupsBySemester.flatMap((group) =>
-                      group.months.map((month) => (
-                        <th
-                          key={`${group.semesterId}-${month.monthYear}`}
-                          colSpan={month.sessions.length}
-                          className={`sticky z-30 border bg-background p-2 text-center text-sm font-semibold uppercase ${
-                            hasSemesterGroups ? 'top-[38px]' : 'top-0'
-                          }`}
-                        >
-                          {month.monthYear}
-                        </th>
-                      )),
-                    )}
-                  </tr>
+                  {!hasNoSessions && (
+                    <tr className=" border">
+                      <th
+                        className={`sticky left-0 z-40 border bg-background p-2 text-sm font-semibold text-right ${
+                          hasSemesterGroups ? 'top-[38px]' : 'top-0'
+                        }`}
+                      >
+                        {!hasSemesterGroups && t('attendance.grid.studentName')}
+                      </th>
+                      {monthGroupsBySemester.flatMap((group) =>
+                        group.months.map((month) => (
+                          <th
+                            key={`${group.semesterId}-${month.monthYear}`}
+                            colSpan={month.sessions.length}
+                            className={`sticky z-30 border bg-background p-2 text-center text-sm font-semibold uppercase ${
+                              hasSemesterGroups ? 'top-[38px]' : 'top-0'
+                            }`}
+                          >
+                            {month.monthYear}
+                          </th>
+                        )),
+                      )}
+                    </tr>
+                  )}
 
                   {/* Header Row 3: Day & Date */}
                   <tr className="">
                     <th
-                      className={`sticky left-0 z-40 border bg-background p-2 ${
-                        hasSemesterGroups ? 'top-[76px]' : 'top-[38px]'
+                      className={`sticky left-0 z-40 border bg-background p-2 text-sm font-semibold text-right ${
+                        hasNoSessions
+                          ? 'top-0'
+                          : hasSemesterGroups
+                            ? 'top-[76px]'
+                            : 'top-[38px]'
                       }`}
-                    />
+                    >
+                      {hasNoSessions && t('attendance.grid.studentName')}
+                    </th>
                     {hasNoSessions && (
                       <th
-                        className={`sticky z-30 border bg-background p-2 text-center text-xs text-muted-foreground ${
-                          hasSemesterGroups ? 'top-[76px]' : 'top-[38px]'
-                        }`}
+                        className="sticky top-0 z-30 border bg-background p-2 text-center text-xs text-muted-foreground"
                       >
                         {t('attendance.grid.noSessions', {
                           defaultValue: 'No session yet',

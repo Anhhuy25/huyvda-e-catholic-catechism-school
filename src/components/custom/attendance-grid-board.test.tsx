@@ -193,6 +193,17 @@ describe('AttendanceGridBoard', () => {
       expect(screen.getByText('attendance.grid.noStudents')).toBeInTheDocument()
       expect(screen.queryByRole('table')).not.toBeInTheDocument()
     })
+
+    test('hides month header row and shows "no sessions" when class has students but no sessions', () => {
+      const data = makeGridData({ sessions: [] })
+      vi.mocked(useQuery).mockReturnValue(data)
+      const { container } = renderBoard()
+
+      expect(screen.getByRole('table')).toBeInTheDocument()
+      expect(screen.getByText('attendance.grid.noSessions')).toBeInTheDocument()
+      expect(screen.getByText('attendance.grid.studentName')).toBeInTheDocument()
+      expect(container.querySelectorAll('thead tr')).toHaveLength(1)
+    })
   })
 
   describe('rendering with attendance data', () => {
