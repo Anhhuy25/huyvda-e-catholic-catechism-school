@@ -112,7 +112,11 @@ export function SacramentDetailDialog({
   }, [sacramentDetailsData])
 
   const activeStudents = useMemo(
-    () => students.filter((s) => s.student !== null),
+    () =>
+      students.filter(
+        (s) =>
+          s.student !== null && s.student.isActive && !s.student.isDeleted,
+      ),
     [students],
   )
 

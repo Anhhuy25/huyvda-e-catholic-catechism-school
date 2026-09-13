@@ -168,6 +168,67 @@ describe('BulkUpdateSacramentDialog', () => {
     expect(screen.queryByText(/Phero Tran Van C/)).toBeNull()
   })
 
+  test('excludes inactive, soft-deleted, and null students from selection', () => {
+    const extraStudents = [
+      ...mockStudents,
+      {
+        enrollment: {
+          _id: 'sc4' as Id<'studentClasses'>,
+          status: 'active' as const,
+          enrolledDate: '2024-09-01',
+        },
+        student: {
+          _id: 's4' as Id<'students'>,
+          studentCode: 'HS004',
+          fullName: 'Pham Van D',
+          saintName: 'Anna',
+          isActive: false,
+          isDeleted: false,
+          createdAt: 126,
+        } as Doc<'students'>,
+      },
+      {
+        enrollment: {
+          _id: 'sc5' as Id<'studentClasses'>,
+          status: 'active' as const,
+          enrolledDate: '2024-09-01',
+        },
+        student: {
+          _id: 's5' as Id<'students'>,
+          studentCode: 'HS005',
+          fullName: 'Hoang Van E',
+          saintName: 'Teresa',
+          isActive: true,
+          isDeleted: true,
+          createdAt: 127,
+        } as Doc<'students'>,
+      },
+      {
+        enrollment: {
+          _id: 'sc6' as Id<'studentClasses'>,
+          status: 'active' as const,
+          enrolledDate: '2024-09-01',
+        },
+        student: null,
+      },
+    ]
+
+    render(
+      <BulkUpdateSacramentDialog
+        isOpen={true}
+        onOpenChange={mockOnOpenChange}
+        classYearId={mockClassYearId}
+        className={mockClassName}
+        students={extraStudents}
+      />,
+    )
+
+    expect(screen.getByText(/Giuse Nguyen Van A/)).toBeInTheDocument()
+    expect(screen.getByText(/Maria Le Thi B/)).toBeInTheDocument()
+    expect(screen.queryByText(/Anna Pham Van D/)).toBeNull() // isActive: false
+    expect(screen.queryByText(/Teresa Hoang Van E/)).toBeNull() // isDeleted: true
+  })
+
   test('submits form with selected sacrament, date, and checked students', async () => {
     render(
       <BulkUpdateSacramentDialog

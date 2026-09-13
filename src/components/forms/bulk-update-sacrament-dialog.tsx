@@ -77,8 +77,16 @@ export function BulkUpdateSacramentDialog({
     api.students.bulkUpdateStudentSacraments,
   )
 
-  const activeStudents = students.filter(
-    (s) => s.student !== null && s.enrollment.status === 'active',
+  const activeStudents = useMemo(
+    () =>
+      students.filter(
+        (s) =>
+          s.student !== null &&
+          s.student.isActive &&
+          !s.student.isDeleted &&
+          s.enrollment.status === 'active',
+      ),
+    [students],
   )
 
   const sortedStudents = useMemo(() => {
