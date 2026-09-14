@@ -347,13 +347,13 @@ export async function checkEditStudentPermission(
       ? prefetched.activeAcademicYearId
       : await getActiveAcademicYear(ctx)
     if (activeYearId) {
-      const boardAssignment = await ctx.db
+      const boardAssignments = await ctx.db
         .query('academicYearAssignments')
         .withIndex('by_academic_year_id_and_catechist_id', (q) =>
           q.eq('academicYearId', activeYearId!).eq('catechistId', requesterId),
         )
-        .first()
-      isBoard = !!(boardAssignment && !boardAssignment.isDeleted)
+        .collect()
+      isBoard = boardAssignments.some((a) => !a.isDeleted)
     } else {
       isBoard = false
     }
@@ -389,15 +389,15 @@ export async function checkEditStudentPermission(
     if (classYear.academicYearId !== activeYearId) continue
 
     // Check if requester is assigned to this class year
-    const classAssignment = await ctx.db
+    const classAssignments = await ctx.db
       .query('classCatechists')
       .withIndex('by_catechist_id_and_class_year_id', (q) =>
         q
           .eq('catechistId', requesterId)
           .eq('classYearId', enrollment.classYearId),
       )
-      .first()
-    if (classAssignment && !classAssignment.isDeleted) {
+      .collect()
+    if (classAssignments.some((a) => !a.isDeleted)) {
       return true
     }
 
@@ -405,7 +405,7 @@ export async function checkEditStudentPermission(
     const classDoc = await ctx.db.get('classes', classYear.classId)
     if (!classDoc || classDoc.isDeleted) continue
 
-    const branchAssignment = await ctx.db
+    const branchAssignments = await ctx.db
       .query('branchAssignments')
       .withIndex('by_academic_year_id_and_catechist_id_and_branch_id', (q) =>
         q
@@ -413,8 +413,8 @@ export async function checkEditStudentPermission(
           .eq('catechistId', requesterId)
           .eq('branchId', classDoc.branchId),
       )
-      .first()
-    if (branchAssignment && !branchAssignment.isDeleted) {
+      .collect()
+    if (branchAssignments.some((a) => !a.isDeleted)) {
       return true
     }
   }
@@ -456,15 +456,15 @@ export async function checkStudentSensitiveInfoPermission(
     if (classYear.academicYearId !== activeYearId) continue
 
     // Check if requester is assigned to this class year
-    const classAssignment = await ctx.db
+    const classAssignments = await ctx.db
       .query('classCatechists')
       .withIndex('by_catechist_id_and_class_year_id', (q) =>
         q
           .eq('catechistId', requesterId)
           .eq('classYearId', enrollment.classYearId),
       )
-      .first()
-    if (classAssignment && !classAssignment.isDeleted) {
+      .collect()
+    if (classAssignments.some((a) => !a.isDeleted)) {
       return true
     }
   }
