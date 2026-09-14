@@ -391,27 +391,28 @@ export function EvaluationsBoard({
 
   return (
     <div className="flex w-full flex-col gap-4 min-w-0">
-      <div className="flex flex-wrap gap-2 items-center justify-end">
-        {canManage && (
-          <Button variant="outline" size="sm" onClick={handleExportCsv}>
-            <Download className="h-4 w-4" />
-            <span>{t('classes.export.csv')}</span>
-          </Button>
-        )}
-        {canManage && (
-          <Button size="sm" onClick={handleSaveAll} disabled={isSaving}>
-            <Save className="h-4 w-4" />
-            <span>{t('evaluations.saveBtn')}</span>
-          </Button>
-        )}
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('evaluations.title')}</CardTitle>
-          <CardDescription>{t('evaluations.subtitle')}</CardDescription>
+      <Card className="border-0 ring-0 p-0 overflow-visible">
+        <CardHeader className="flex flex-col gap-4 sm:flex-row item-start sm:items-center sm:justify-between px-0">
+          <div>
+            <CardTitle>{t('evaluations.title')}</CardTitle>
+            <CardDescription>{t('evaluations.subtitle')}</CardDescription>
+          </div>
+          <div className="flex flex-wrap gap-2 items-center justify-end">
+            {canManage && (
+              <Button variant="outline" size="sm" onClick={handleExportCsv}>
+                <Download className="h-4 w-4" />
+                <span>{t('classes.export.csv')}</span>
+              </Button>
+            )}
+            {canManage && (
+              <Button size="sm" onClick={handleSaveAll} disabled={isSaving}>
+                <Save className="h-4 w-4" />
+                <span>{t('evaluations.saveBtn')}</span>
+              </Button>
+            )}
+          </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-0">
           <div className="w-full rounded-lg border bg-card overflow-x-auto max-h-150">
             <table className="border-collapse w-full min-w-225 text-xs">
               <thead>

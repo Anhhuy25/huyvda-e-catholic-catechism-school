@@ -713,51 +713,8 @@ export function AttendanceGridBoard({
         </Alert>
       )}
 
-      <div className="flex flex-wrap justify-end gap-2 items-center">
-        {canManage && (
-          <Button variant="outline" size="sm" onClick={handleExportCsv}>
-            <Download className="h-4 w-4" />
-            <span>{t('classes.export.csv')}</span>
-          </Button>
-        )}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowCancelled((v) => !v)}
-        >
-          {showCancelled ? (
-            <EyeOff className="h-4 w-4" />
-          ) : (
-            <Eye className="h-4 w-4" />
-          )}
-          {showCancelled
-            ? t('attendance.grid.toolbar.hideCancelled')
-            : t('attendance.grid.toolbar.showCancelled')}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() =>
-            setDateOrder((order) => (order === 'asc' ? 'desc' : 'asc'))
-          }
-        >
-          <ArrowUpDown className="h-4 w-4" />
-          {dateOrder === 'desc'
-            ? t('attendance.grid.toolbar.newestFirst')
-            : t('attendance.grid.toolbar.oldestFirst')}
-        </Button>
-        {canManage && (
-          <Link to="/classes/$id/sessions/create" params={{ id: classId }}>
-            <Button size="sm">
-              <Plus className="h-4 w-4" />
-              <span>{t('attendance.grid.toolbar.createSession')}</span>
-            </Button>
-          </Link>
-        )}
-      </div>
-
-      <Card>
-        <CardHeader>
+      <Card className="border-0 ring-0 p-0 overflow-visible">
+        <CardHeader className="px-0">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <Select
               value={selectedSemester}
@@ -788,9 +745,54 @@ export function AttendanceGridBoard({
                 ))}
               </SelectContent>
             </Select>
+            <div className="flex flex-wrap justify-end gap-2 items-center">
+              {canManage && (
+                <Button variant="outline" size="sm" onClick={handleExportCsv}>
+                  <Download className="h-4 w-4" />
+                  <span>{t('classes.export.csv')}</span>
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowCancelled((v) => !v)}
+              >
+                {showCancelled ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+                {showCancelled
+                  ? t('attendance.grid.toolbar.hideCancelled')
+                  : t('attendance.grid.toolbar.showCancelled')}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setDateOrder((order) => (order === 'asc' ? 'desc' : 'asc'))
+                }
+              >
+                <ArrowUpDown className="h-4 w-4" />
+                {dateOrder === 'desc'
+                  ? t('attendance.grid.toolbar.newestFirst')
+                  : t('attendance.grid.toolbar.oldestFirst')}
+              </Button>
+              {canManage && (
+                <Link
+                  to="/classes/$id/sessions/create"
+                  params={{ id: classId }}
+                >
+                  <Button size="sm">
+                    <Plus className="h-4 w-4" />
+                    <span>{t('attendance.grid.toolbar.createSession')}</span>
+                  </Button>
+                </Link>
+              )}
+            </div>
           </div>
         </CardHeader>
-        <CardContent className="h-screen min-h-0">
+        <CardContent className="h-screen min-h-0 px-0">
           <div className="w-full h-full overflow-hidden relative">
             <div className="overflow-auto min-w-0 w-full h-full scroll-fade">
               <table className="border-collapse w-full">

@@ -748,146 +748,154 @@ function ClassDetailPage() {
                   ? 'exams'
                   : 'students'
             }
-            className="w-full"
+            className="w-auto -mx-4 px-4 bg-card pb-4"
           >
-            <TabsList className="md:grid w-full grid-cols-3 overflow-hidden overflow-x-auto ring-2 ring-primary/50 shadow-xl bg-background">
+            <TabsList
+              variant="line"
+              className="md:grid w-auto grid-cols-3 overflow-hidden overflow-x-auto border-b-border py-0 bg-linear-to-b from-background to-foreground/5 -mx-4 px-4"
+            >
               <TabsTrigger
                 value="students"
-                className="data-active:bg-primary data-active:text-primary-foreground"
+                className="-mb-0.5 data-active:bg-card! data-active:shadow-md! data-active:text-primary border-0! rounded-b-none hover:bg-card"
               >
                 {t('classes.detail.tabs.students')}
               </TabsTrigger>
               <TabsTrigger
                 value="attendance"
-                className="data-active:bg-primary data-active:text-primary-foreground"
+                className="-mb-0.5 data-active:bg-card! data-active:shadow-md! data-active:text-primary border-0! rounded-b-none hover:bg-card"
               >
                 {t('classes.detail.tabs.attendance')}
               </TabsTrigger>
               <TabsTrigger
                 value="exams"
-                className="data-active:bg-primary data-active:text-primary-foreground"
+                className="-mb-0.5 data-active:bg-card! data-active:shadow-md! data-active:text-primary border-0! rounded-b-none hover:bg-card"
               >
                 {t('classes.detail.tabs.exams')}
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="students" className="mt-6">
-              <div className="mb-4 flex flex-wrap justify-end gap-2">
-                {canManage && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={
-                        <Button variant="outline">
-                          <Download className="size-4" />
-                          {t('classes.export.title')}
-                        </Button>
-                      }
-                    />
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        onClick={() =>
-                          exportCsv(
-                            exportRows,
-                            `${classDetails.class.name}-students.csv`,
-                            exportHeaders,
-                          )
-                        }
-                      >
-                        {t('classes.export.csv')}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => {
-                          if (!pdfMeta) return
-                          exportPdf(
-                            exportRows,
-                            classDetails.class.name,
-                            pdfMeta,
-                            `${classDetails.class.name}-students.pdf`,
-                            exportHeaders,
-                          )
-                        }}
-                      >
-                        {t('classes.export.pdf')}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-                {isPrimaryClass && canManage && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={
-                        <Button variant="outline">
-                          <Printer className="size-4" />
-                          {t('printCards.buttonLabel')}
-                        </Button>
-                      }
-                    />
-                    <DropdownMenuContent align="end" className="min-w-fit">
-                      <DropdownMenuItem
-                        onClick={() => setPrintCardsDialogOpen(true)}
-                      >
-                        <Printer className="size-4" />
-                        {t('printCards.buttonLabel')}
-                      </DropdownMenuItem>
-                      {!isInactive && (
-                        <DropdownMenuItem
+            <TabsContent value="students" className="pt-6">
+              <Card className="border-0 ring-0 p-0 overflow-visible">
+                <CardHeader className="px-0">
+                  <div className="flex flex-wrap justify-end gap-2">
+                    {canManage && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
                           render={
-                            <Link
-                              to="/classes/$id/photobooth"
-                              params={{ id: id as string }}
-                            />
+                            <Button variant="outline">
+                              <Download className="size-4" />
+                              {t('classes.export.title')}
+                            </Button>
                           }
+                        />
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() =>
+                              exportCsv(
+                                exportRows,
+                                `${classDetails.class.name}-students.csv`,
+                                exportHeaders,
+                              )
+                            }
+                          >
+                            {t('classes.export.csv')}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              if (!pdfMeta) return
+                              exportPdf(
+                                exportRows,
+                                classDetails.class.name,
+                                pdfMeta,
+                                `${classDetails.class.name}-students.pdf`,
+                                exportHeaders,
+                              )
+                            }}
+                          >
+                            {t('classes.export.pdf')}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                    {isPrimaryClass && canManage && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <Button variant="outline">
+                              <Printer className="size-4" />
+                              {t('printCards.buttonLabel')}
+                            </Button>
+                          }
+                        />
+                        <DropdownMenuContent align="end" className="min-w-fit">
+                          <DropdownMenuItem
+                            onClick={() => setPrintCardsDialogOpen(true)}
+                          >
+                            <Printer className="size-4" />
+                            {t('printCards.buttonLabel')}
+                          </DropdownMenuItem>
+                          {!isInactive && (
+                            <DropdownMenuItem
+                              render={
+                                <Link
+                                  to="/classes/$id/photobooth"
+                                  params={{ id: id as string }}
+                                />
+                              }
+                            >
+                              <Camera className="size-4" />
+                              {t('photobooth.buttonLabel')}
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                    {isPrimaryClass && canManage && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <Button variant="outline">
+                              <FlameIcon />
+                              {t('classes.sacraments.buttonLabel')}
+                            </Button>
+                          }
+                        />
+                        <DropdownMenuContent
+                          align="end"
+                          className={'min-w-fit'}
                         >
-                          <Camera className="size-4" />
-                          {t('photobooth.buttonLabel')}
-                        </DropdownMenuItem>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-                {isPrimaryClass && canManage && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={
-                        <Button variant="outline">
-                          <FlameIcon />
-                          {t('classes.sacraments.buttonLabel')}
+                          <DropdownMenuItem
+                            onClick={() => setBulkUpdateDialogOpen(true)}
+                          >
+                            <CalendarIcon />
+                            {t('classes.sacraments.bulkUpdate.buttonLabel')}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => setSacramentDetailDialogOpen(true)}
+                          >
+                            <PencilIcon />
+                            {t('classes.sacraments.detail.buttonLabel')}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                    {canManage && !isInactive && (
+                      <>
+                        <Button
+                          variant="outline"
+                          onClick={() => setSendStudentsDialogOpen(true)}
+                        >
+                          <Send className="size-4" />
+                          {t('classes.sendStudents.buttonLabel')}
                         </Button>
-                      }
-                    />
-                    <DropdownMenuContent align="end" className={'min-w-fit'}>
-                      <DropdownMenuItem
-                        onClick={() => setBulkUpdateDialogOpen(true)}
-                      >
-                        <CalendarIcon />
-                        {t('classes.sacraments.bulkUpdate.buttonLabel')}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => setSacramentDetailDialogOpen(true)}
-                      >
-                        <PencilIcon />
-                        {t('classes.sacraments.detail.buttonLabel')}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-                {canManage && !isInactive && (
-                  <>
-                    <Button
-                      variant="outline"
-                      onClick={() => setSendStudentsDialogOpen(true)}
-                    >
-                      <Send className="size-4" />
-                      {t('classes.sendStudents.buttonLabel')}
-                    </Button>
-                    <Button onClick={() => setEnrollDialogOpen(true)}>
-                      <PlusIcon />
-                      {t('classes.enrollment.buttonLabel')}
-                    </Button>
-                  </>
-                )}
-              </div>
-              <Card>
+                        <Button onClick={() => setEnrollDialogOpen(true)}>
+                          <PlusIcon />
+                          {t('classes.enrollment.buttonLabel')}
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </CardHeader>
                 <CardContent>
                   <DataTable
                     columns={columns}
