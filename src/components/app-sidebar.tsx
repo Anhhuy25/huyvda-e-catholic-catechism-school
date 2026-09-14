@@ -389,7 +389,7 @@ export function AppSidebar({
             <SidebarGroupLabel className="text-primary">
               {t('nav.myClasses')}
             </SidebarGroupLabel>
-            <SidebarMenu className="bg-accent/50 p-2 rounded-lg gap-2">
+            <SidebarMenu className="bg-accent/50 p-2 rounded-lg gap-2 group-data-[state=collapsed]:p-0">
               {myClasses === undefined ? (
                 <SidebarMenuItem>
                   <div className="px-3 py-2 text-sm text-muted-foreground">
