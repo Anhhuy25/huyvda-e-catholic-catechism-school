@@ -36,6 +36,7 @@ import type * as lib_classConflictCheck from "../lib/classConflictCheck.js";
 import type * as lib_classSessionHelpers from "../lib/classSessionHelpers.js";
 import type * as lib_classTypes from "../lib/classTypes.js";
 import type * as lib_counter from "../lib/counter.js";
+import type * as lib_dbHelpers from "../lib/dbHelpers.js";
 import type * as lib_eligibility from "../lib/eligibility.js";
 import type * as lib_errors from "../lib/errors.js";
 import type * as lib_gradingEngine from "../lib/gradingEngine.js";
@@ -96,6 +97,7 @@ declare const fullApi: ApiFromModules<{
   "lib/classSessionHelpers": typeof lib_classSessionHelpers;
   "lib/classTypes": typeof lib_classTypes;
   "lib/counter": typeof lib_counter;
+  "lib/dbHelpers": typeof lib_dbHelpers;
   "lib/eligibility": typeof lib_eligibility;
   "lib/errors": typeof lib_errors;
   "lib/gradingEngine": typeof lib_gradingEngine;

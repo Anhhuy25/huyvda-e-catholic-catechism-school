@@ -18,6 +18,7 @@ import {
   isClassScopedSession,
 } from './lib/attendance'
 import { nextCounter } from './lib/counter'
+import { firstActive } from './lib/dbHelpers'
 import { ENROLLMENT_ERRORS, STUDENT_ERRORS } from './lib/errors'
 import { hashPassword } from './lib/password'
 import { getStudentLoginId } from './lib/accountPrefix'
@@ -286,17 +287,15 @@ export const list = query({
     const activeYearId = await getActiveAcademicYear(ctx)
     let isBoardMemberForActiveYear = false
     if (activeYearId) {
-      const boardAssignment = await ctx.db
-        .query('academicYearAssignments')
-        .withIndex('by_academic_year_id_and_catechist_id', (q) =>
-          q
-            .eq('academicYearId', activeYearId)
-            .eq('catechistId', args.requesterId),
-        )
-        .first()
-      isBoardMemberForActiveYear = !!(
-        boardAssignment && !boardAssignment.isDeleted
-      )
+      isBoardMemberForActiveYear = !!(await firstActive(
+        ctx.db
+          .query('academicYearAssignments')
+          .withIndex('by_academic_year_id_and_catechist_id', (q) =>
+            q
+              .eq('academicYearId', activeYearId)
+              .eq('catechistId', args.requesterId),
+          ),
+      ))
     }
     const prefetchedPerms = {
       role: catechist.role,

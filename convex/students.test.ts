@@ -5916,3 +5916,111 @@ describe('getMySidebarInfo', () => {
     ).rejects.toThrow(AUTHZ_ERRORS.STUDENT_NOT_FOUND)
   })
 })
+
+describe('list query board member regression (stale soft-deleted assignment)', () => {
+  test('isEditable is true when a soft-deleted duplicate assignment precedes the active one', async () => {
+    const t = convexTest(schema, modules)
+
+    const adminId = await t.run(async (ctx) => {
+      return await ctx.db.insert('catechists', {
+        memberId: 'GLV001',
+        fullName: 'Admin',
+        role: 'admin',
+        isActive: true,
+        isDeleted: false,
+      })
+    })
+
+    const boardCatechistId = await t.run(async (ctx) => {
+      return await ctx.db.insert('catechists', {
+        memberId: 'GLV002',
+        fullName: 'Board Member',
+        role: 'user',
+        isActive: true,
+        isDeleted: false,
+      })
+    })
+
+    const academicYearId = await t.run(async (ctx) => {
+      return await ctx.db.insert('academicYears', {
+        name: '2024-2025',
+        startDate: '2024-09-01',
+        endDate: '2025-05-31',
+        timezone: 'Asia/Ho_Chi_Minh',
+        isActive: true,
+        isDeleted: false,
+      })
+    })
+
+    const branchId = await t.run(async (ctx) => {
+      return await ctx.db.insert('branches', {
+        name: 'Branch A',
+        sortOrder: 1,
+        isDeleted: false,
+      })
+    })
+
+    const classId = await t.run(async (ctx) => {
+      return await ctx.db.insert('classes', {
+        branchId,
+        name: 'Au Nhi 1',
+        isDeleted: false,
+      })
+    })
+
+    const classYearId = await t.run(async (ctx) => {
+      return await ctx.db.insert('classYears', {
+        classId,
+        academicYearId,
+        isDeleted: false,
+      })
+    })
+
+    const studentId = await t.mutation(api.students.create, {
+      requesterId: adminId,
+      fullName: 'Non Floating Student',
+    })
+
+    // Non-floating student, enrolled in a class the board member is NOT
+    // assigned to and is not branch head of — so without board membership
+    // isEditable must be false.
+    await t.run(async (ctx) => {
+      await ctx.db.insert('studentClasses', {
+        studentId,
+        classYearId,
+        isPrimaryClass: true,
+        enrolledDate: '2024-09-01',
+        status: 'active',
+        isDeleted: false,
+      })
+    })
+
+    // Reproduce the insertion-order bug: a stale soft-deleted row inserted
+    // first, then the real non-deleted row for the same
+    // (academicYearId, catechistId) key — mirrors assignments.ts always
+    // soft-deleting-all-existing then inserting new rows on reassignment.
+    await t.run(async (ctx) => {
+      await ctx.db.insert('academicYearAssignments', {
+        academicYearId,
+        catechistId: boardCatechistId,
+        assignmentType: 'board_member',
+        isDeleted: true,
+      })
+      await ctx.db.insert('academicYearAssignments', {
+        academicYearId,
+        catechistId: boardCatechistId,
+        assignmentType: 'board_member',
+        isDeleted: false,
+      })
+    })
+
+    const result = await t.query(api.students.list, {
+      requesterId: boardCatechistId,
+      paginationOpts: { numItems: 10, cursor: null },
+    })
+
+    const student = result.page.find((s) => s._id === studentId)
+    expect(student).toBeDefined()
+    expect(student?.isEditable).toBe(true)
+  })
+})
