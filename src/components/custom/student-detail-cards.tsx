@@ -57,29 +57,30 @@ export function StudentDetailCards({
     >
       <TabsList
         variant="line"
-        className="w-auto scroll-fade-x overflow-y-hidden overflow-x-auto block whitespace-nowrap border-b-border py-0 bg-linear-to-b from-background to-foreground/5 -mx-4 px-4"
+        className="w-auto space-x-1 scroll-fade-x overflow-y-hidden overflow-x-auto block whitespace-nowrap border-b-border py-0 bg-linear-to-b from-background to-foreground/5 -mx-4 px-4"
       >
         <TabsTrigger
           value="personal"
-          className="-mb-0.5 data-active:bg-card! data-active:shadow-md! data-active:text-primary border-0! rounded-b-none hover:bg-card px-4 h-full"
+          className="-mb-0.5 bg-primary/10! data-active:bg-card! data-active:shadow-md! data-active:text-primary border-0! rounded-b-none hover:bg-card px-4 h-full"
         >
+          {' '}
           {t('students.detail.tabs.personal')}
         </TabsTrigger>
         <TabsTrigger
           value="guardians"
-          className="-mb-0.5 data-active:bg-card! data-active:shadow-md! data-active:text-primary border-0! rounded-b-none hover:bg-card px-4 h-full"
+          className="-mb-0.5 bg-primary/10! data-active:bg-card! data-active:shadow-md! data-active:text-primary border-0! rounded-b-none hover:bg-card px-4 h-full"
         >
           {t('students.detail.tabs.guardians')}
         </TabsTrigger>
         <TabsTrigger
           value="sacraments"
-          className="-mb-0.5 data-active:bg-card! data-active:shadow-md! data-active:text-primary border-0! rounded-b-none hover:bg-card px-4 h-full"
+          className="-mb-0.5 bg-primary/10! data-active:bg-card! data-active:shadow-md! data-active:text-primary border-0! rounded-b-none hover:bg-card px-4 h-full"
         >
           {t('students.detail.tabs.sacraments')}
         </TabsTrigger>
         <TabsTrigger
           value="enrollments"
-          className="-mb-0.5 data-active:bg-card! data-active:shadow-md! data-active:text-primary border-0! rounded-b-none hover:bg-card px-4 h-full"
+          className="-mb-0.5 bg-primary/10! data-active:bg-card! data-active:shadow-md! data-active:text-primary border-0! rounded-b-none hover:bg-card px-4 h-full"
         >
           {t('students.detail.tabs.enrollments')}
         </TabsTrigger>

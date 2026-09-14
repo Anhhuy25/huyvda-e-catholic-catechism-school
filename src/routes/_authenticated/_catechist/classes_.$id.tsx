@@ -756,19 +756,19 @@ function ClassDetailPage() {
             >
               <TabsTrigger
                 value="students"
-                className="-mb-0.5 data-active:bg-card! data-active:shadow-md! data-active:text-primary border-0! rounded-b-none hover:bg-card px-4 h-full"
+                className="-mb-0.5 data-active:bg-card! data-active:shadow-md! bg-primary/10! data-active:text-primary border-0! rounded-b-none hover:bg-card px-4 h-full"
               >
                 {t('classes.detail.tabs.students')}
               </TabsTrigger>
               <TabsTrigger
                 value="attendance"
-                className="-mb-0.5 data-active:bg-card! data-active:shadow-md! data-active:text-primary border-0! rounded-b-none hover:bg-card px-4 h-full"
+                className="-mb-0.5 data-active:bg-card! data-active:shadow-md! bg-primary/10! data-active:text-primary border-0! rounded-b-none hover:bg-card px-4 h-full"
               >
                 {t('classes.detail.tabs.attendance')}
               </TabsTrigger>
               <TabsTrigger
                 value="exams"
-                className="-mb-0.5 data-active:bg-card! data-active:shadow-md! data-active:text-primary border-0! rounded-b-none hover:bg-card px-4 h-full"
+                className="-mb-0.5 data-active:bg-card! data-active:shadow-md! bg-primary/10! data-active:text-primary border-0! rounded-b-none hover:bg-card px-4 h-full"
               >
                 {t('classes.detail.tabs.exams')}
               </TabsTrigger>
