@@ -293,4 +293,57 @@ describe('getBranchStats', () => {
 
     expect(result).toEqual([])
   })
+
+  test('excludes unenrolled (withdrawn) and soft-deleted students from branch studentCount', async () => {
+    const t = convexTest(schema, modules)
+
+    const { adminId, yearId, branchId } = await t.run(async (ctx) => {
+      const adminId = await seedAdmin(ctx)
+      const yearId = await seedActiveYear(ctx)
+      const branchId = await seedBranch(ctx, 'Ấu Nhi', 1)
+
+      const class1 = await seedClass(ctx, branchId, 'Lớp 1A')
+      const cy1 = await seedClassYear(ctx, class1, yearId)
+
+      const activeStudent = await seedStudent(ctx, 'HS030', 'Active Student')
+      await seedStudentClass(ctx, activeStudent, cy1)
+
+      const withdrawnStudent = await seedStudent(
+        ctx,
+        'HS031',
+        'Withdrawn Student',
+      )
+      await ctx.db.insert('studentClasses', {
+        studentId: withdrawnStudent,
+        classYearId: cy1,
+        isPrimaryClass: true,
+        enrolledDate: '2024-09-05',
+        status: 'withdrawn',
+        statusChangedDate: '2024-10-01',
+        leftDate: '2024-10-01',
+        isDeleted: false,
+      })
+
+      const deletedStudent = await ctx.db.insert('students', {
+        studentCode: 'HS032',
+        fullName: 'Deleted Student',
+        isActive: true,
+        createdAt: Date.now(),
+        isDeleted: true,
+      })
+      await seedStudentClass(ctx, deletedStudent, cy1)
+
+      return { adminId, yearId, branchId }
+    })
+
+    const result = await t.query(api.branchStats.getBranchStats, {
+      requesterId: adminId,
+      academicYearId: yearId,
+    })
+
+    expect(result).toHaveLength(1)
+    expect(result[0].branchId).toBe(branchId)
+    // Only the 1 active non-withdrawn non-deleted student should be counted
+    expect(result[0].studentCount).toBe(1)
+  })
 })

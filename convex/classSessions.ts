@@ -170,7 +170,13 @@ export const listMySessionsInRange = query({
           .query('studentClasses')
           .withIndex('by_class_year_id', (q) => q.eq('classYearId', cyId))
           .collect()
-        const count = scs.filter((sc) => !sc.isDeleted).length
+        const activeScs = scs.filter(
+          (sc) => !sc.isDeleted && sc.status !== 'withdrawn',
+        )
+        const students = await Promise.all(
+          activeScs.map((sc) => ctx.db.get('students', sc.studentId)),
+        )
+        const count = students.filter((s) => s && !s.isDeleted).length
         return [cyId, count] as const
       }),
     )

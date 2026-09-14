@@ -242,6 +242,56 @@ describe('getOrgStats', () => {
     expect(result.totalCatechists).toBe(1)
   })
 
+  test('excludes unenrolled (withdrawn) and soft-deleted students from totalStudents', async () => {
+    const t = convexTest(schema, modules)
+
+    const { adminId, yearId } = await t.run(async (ctx) => {
+      const adminId = await seedAdmin(ctx)
+      const yearId = await seedActiveYear(ctx)
+      const branch = await seedBranch(ctx, 'Ấu Nhi', 1)
+      const class1 = await seedClass(ctx, branch, 'Lớp 1A')
+      const cy1 = await seedClassYear(ctx, class1, yearId)
+
+      const activeStudent = await seedStudent(ctx, 'HS030', 'Active Student')
+      await seedStudentClass(ctx, activeStudent, cy1)
+
+      const withdrawnStudent = await seedStudent(
+        ctx,
+        'HS031',
+        'Withdrawn Student',
+      )
+      await ctx.db.insert('studentClasses', {
+        studentId: withdrawnStudent,
+        classYearId: cy1,
+        isPrimaryClass: true,
+        enrolledDate: '2024-09-05',
+        status: 'withdrawn',
+        statusChangedDate: '2024-10-01',
+        leftDate: '2024-10-01',
+        isDeleted: false,
+      })
+
+      const deletedStudent = await ctx.db.insert('students', {
+        studentCode: 'HS032',
+        fullName: 'Deleted Student',
+        isActive: true,
+        createdAt: Date.now(),
+        isDeleted: true,
+      })
+      await seedStudentClass(ctx, deletedStudent, cy1)
+
+      return { adminId, yearId }
+    })
+
+    const result = await t.query(api.orgStats.getOrgStats, {
+      requesterId: adminId,
+      academicYearId: yearId,
+    })
+
+    // Only the 1 active non-withdrawn non-deleted student should be counted
+    expect(result.totalStudents).toBe(1)
+  })
+
   test('rejects a requester who is not admin or board member', async () => {
     const t = convexTest(schema, modules)
 

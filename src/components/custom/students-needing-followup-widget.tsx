@@ -41,47 +41,49 @@ export function StudentsNeedingFollowupWidget({
             {t('dashboard.followUp.empty')}
           </p>
         ) : (
-          <div className="flex flex-col gap-2 divide-y *:pb-2">
-            {students.map((student) => (
-              <div
-                key={student.studentClassId}
-                className="flex flex-col gap-1.5 px-4"
-              >
-                <div className="flex flex-col">
-                  <Link
-                    to="/students/$id"
-                    params={{ id: student.studentId }}
-                    className="font-medium hover:underline"
-                  >
-                    {student.fullName}
-                  </Link>
-                  <p className="text-sm text-muted-foreground">
-                    {student.className}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {student.attendanceRate < 75 && (
-                    <Badge variant="destructive" className="tabular-nums">
-                      <AlertTriangle className="size-3" />
-                      {t('dashboard.followUp.reasons.lowAttendance', {
-                        rate: student.attendanceRate,
-                      })}
-                    </Badge>
-                  )}
-                  {student.scoreEntriesCount < 3 && (
-                    <Badge
-                      variant="outline"
-                      className="tabular-nums text-muted-foreground"
+          <div className="max-h-[300px] overflow-auto">
+            <div className="flex flex-col gap-2 divide-y *:pb-2">
+              {students.map((student) => (
+                <div
+                  key={student.studentClassId}
+                  className="flex flex-col gap-1.5 px-4"
+                >
+                  <div className="flex flex-col">
+                    <Link
+                      to="/students/$id"
+                      params={{ id: student.studentId }}
+                      className="font-medium hover:underline"
                     >
-                      <FileSpreadsheet className="size-3" />
-                      {t('dashboard.followUp.reasons.missingScores', {
-                        count: student.scoreEntriesCount,
-                      })}
-                    </Badge>
-                  )}
+                      {student.fullName}
+                    </Link>
+                    <p className="text-sm text-muted-foreground">
+                      {student.className}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {student.hasAttendanceIssue && (
+                      <Badge variant="destructive" className="tabular-nums">
+                        <AlertTriangle className="size-3" />
+                        {t('dashboard.followUp.reasons.lowAttendance', {
+                          rate: student.attendanceRate,
+                        })}
+                      </Badge>
+                    )}
+                    {student.hasScoreIssue && (
+                      <Badge
+                        variant="outline"
+                        className="tabular-nums text-muted-foreground"
+                      >
+                        <FileSpreadsheet className="size-3" />
+                        {t('dashboard.followUp.reasons.missingScores', {
+                          count: student.missedExamsCount,
+                        })}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
       </CardContent>

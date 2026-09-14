@@ -1713,6 +1713,22 @@ describe('classes backend functions', () => {
             isDeleted: true,
           })
 
+          const deletedStudentId = await ctx.db.insert('students', {
+            studentCode: 'STU9005',
+            fullName: 'Soft-deleted Student',
+            isActive: true,
+            createdAt: Date.now(),
+            isDeleted: true,
+          })
+          await ctx.db.insert('studentClasses', {
+            studentId: deletedStudentId,
+            classYearId: cy1,
+            isPrimaryClass: true,
+            enrolledDate: '2024-09-01',
+            status: 'active',
+            isDeleted: false,
+          })
+
           return {
             catechistId: cId,
             academicYearId: ayId,
@@ -1732,9 +1748,9 @@ describe('classes backend functions', () => {
       expect(result.some((r) => r.classId === otherClassId)).toBe(false)
       expect(result[0].role).toBe('homeroom')
       expect(result[0].branchName).toBe('Test Branch')
-      // 2 non-deleted enrollments (active + withdrawn); the soft-deleted
-      // enrollment (isDeleted: true) is excluded regardless of status
-      expect(result[0].studentCount).toBe(2)
+      // 1 active non-deleted enrollment with non-deleted student;
+      // withdrawn, soft-deleted enrollment, and soft-deleted student are all excluded
+      expect(result[0].studentCount).toBe(1)
     })
 
     test('co-teacher assigned catechist has role co_teacher', async () => {

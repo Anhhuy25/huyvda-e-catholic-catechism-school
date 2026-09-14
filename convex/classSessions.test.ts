@@ -965,6 +965,58 @@ describe('classSessions backend functions', () => {
       expect(supplemental!.recordedCount).toBe(0)
     })
 
+    test('excludes unenrolled (withdrawn) and soft-deleted students from session studentCount', async () => {
+      const { t, ids, inRangeSessionId } = await setupSessions()
+
+      await t.run(async (ctx) => {
+        const withdrawnStudent = await ctx.db.insert('students', {
+          studentCode: 'HS_WITHDRAWN',
+          fullName: 'Withdrawn Student',
+          isActive: true,
+          createdAt: Date.now(),
+          isDeleted: false,
+        })
+        await ctx.db.insert('studentClasses', {
+          studentId: withdrawnStudent,
+          classYearId: ids.classYearId,
+          isPrimaryClass: true,
+          enrolledDate: '2024-09-01',
+          status: 'withdrawn',
+          statusChangedDate: '2024-10-01',
+          leftDate: '2024-10-01',
+          isDeleted: false,
+        })
+
+        const deletedStudent = await ctx.db.insert('students', {
+          studentCode: 'HS_DELETED',
+          fullName: 'Deleted Student',
+          isActive: true,
+          createdAt: Date.now(),
+          isDeleted: true,
+        })
+        await ctx.db.insert('studentClasses', {
+          studentId: deletedStudent,
+          classYearId: ids.classYearId,
+          isPrimaryClass: true,
+          enrolledDate: '2024-09-01',
+          status: 'active',
+          isDeleted: false,
+        })
+      })
+
+      const results = await t.query(api.classSessions.listMySessionsInRange, {
+        requesterId: ids.homeroomId,
+        academicYearId: ids.ayId,
+        dateFrom: '2024-10-01',
+        dateTo: '2024-10-31',
+      })
+
+      const inRange = results.find((r) => r.sessionId === inRangeSessionId)
+      expect(inRange).toBeDefined()
+      // Only the 1 active non-withdrawn non-deleted student should be counted
+      expect(inRange!.studentCount).toBe(1)
+    })
+
     test('excludes sessions outside the date range', async () => {
       const { t, ids, outOfRangeSessionId } = await setupSessions()
 
