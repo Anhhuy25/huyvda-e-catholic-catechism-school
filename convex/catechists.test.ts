@@ -7,7 +7,6 @@ import { api } from './_generated/api'
 import { getCatechistLoginId } from './lib/accountPrefix'
 import { AUTHZ_ERRORS, CATECHIST_ERRORS } from './lib/errors'
 import schema from './schema'
-import type { Id } from './_generated/dataModel'
 
 const modules = import.meta.glob('./**/*.ts')
 
@@ -2823,11 +2822,11 @@ describe('updateWithDetails mutation', () => {
     })
 
     expect(res.count).toBe(1)
-    const newCatechistId = res.items?.[0].catechistId
+    const newCatechistId = res.items[0].catechistId
 
     const newCatechist = await t.query(api.catechists.getCatechistDetail, {
       requesterId: adminId,
-      catechistId: newCatechistId ?? ('' as unknown as Id<'catechists'>),
+      catechistId: newCatechistId,
     })
 
     expect(newCatechist?.profile.fullName).toBe('Nguyễn Văn Học Sinh')

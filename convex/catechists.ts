@@ -1318,7 +1318,7 @@ export const transformStudentsToCatechists = mutation({
     await assertAdminRole(ctx, args.requesterId)
 
     if (args.studentIds.length === 0) {
-      return { count: 0, createdCatechistIds: [] }
+      return { count: 0, items: [] }
     }
 
     const todayStr = new Date().toISOString().split('T')[0]
