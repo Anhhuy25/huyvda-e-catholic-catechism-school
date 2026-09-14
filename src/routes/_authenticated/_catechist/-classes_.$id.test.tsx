@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { useQuery } from 'convex/react'
 import React from 'react'
 import { Route } from './classes_.$id'
@@ -94,6 +94,21 @@ vi.mock('@tanstack/react-router', () => {
     useSearch: () => ({ tab: undefined }),
   }
 })
+
+vi.mock('~/components/forms/calendar-event-dialog', () => ({
+  CalendarEventDialog: ({ isOpen, defaults, onSuccess }: any) =>
+    isOpen ? (
+      <div data-testid="mock-calendar-event-dialog">
+        <span data-testid="event-dialog-scope">{defaults?.scope}</span>
+        <span data-testid="event-dialog-class-year-id">
+          {defaults?.classYearId}
+        </span>
+        <button type="button" onClick={onSuccess}>
+          Simulate Save
+        </button>
+      </div>
+    ) : null,
+}))
 
 describe('ClassDetailPage component', () => {
   test('shows only access-denied alert when classYear exists, cannot manage, and not admin', () => {
@@ -191,5 +206,53 @@ describe('ClassDetailPage component', () => {
     expect(
       screen.queryByText('classes.detail.tabs.students'),
     ).not.toBeInTheDocument()
+  })
+
+  test('renders Plus button in events widget and opens CalendarEventDialog with default scope "class"', () => {
+    setupQueries(buildClassDetails({ canManageEnrollments: true }))
+    vi.mocked(useAuth).mockReturnValue({
+      login: vi.fn(),
+      logout: vi.fn(),
+      user: mockNonAdminUser,
+    })
+
+    const Component = (Route as any).options.component
+    render(<Component />)
+
+    // Verify upcoming events section and view all link
+    expect(
+      screen.getByText('classes.detail.upcomingEvents.title'),
+    ).toBeInTheDocument()
+    const viewAllLink = screen.getByText(
+      'classes.detail.upcomingEvents.viewAll',
+    )
+    expect(viewAllLink).toBeInTheDocument()
+
+    // Verify Plus button is present
+    const addEventButton = screen.getByRole('button', {
+      name: 'calendarEvents.manage.addEvent',
+    })
+    expect(addEventButton).toBeInTheDocument()
+
+    // Dialog should not be open initially
+    expect(
+      screen.queryByTestId('mock-calendar-event-dialog'),
+    ).not.toBeInTheDocument()
+
+    // Click Plus button
+    fireEvent.click(addEventButton)
+
+    // Dialog should now be open with scope 'class' and current classYearId
+    expect(screen.getByTestId('mock-calendar-event-dialog')).toBeInTheDocument()
+    expect(screen.getByTestId('event-dialog-scope')).toHaveTextContent('class')
+    expect(screen.getByTestId('event-dialog-class-year-id')).toHaveTextContent(
+      'classYear123',
+    )
+
+    // Simulate successful save
+    const simulateSaveButton = screen.getByRole('button', {
+      name: 'Simulate Save',
+    })
+    fireEvent.click(simulateSaveButton)
   })
 })

@@ -67,6 +67,7 @@ import {
 import { Skeleton } from '~/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
 import { EnrollmentDialog } from '~/components/forms/enrollment-dialog'
+import { CalendarEventDialog } from '~/components/forms/calendar-event-dialog'
 import { SendStudentsDialog } from '~/components/forms/send-students-dialog'
 import { BulkUpdateSacramentDialog } from '~/components/forms/bulk-update-sacrament-dialog'
 import { SacramentDetailDialog } from '~/components/forms/sacrament-detail-dialog'
@@ -122,6 +123,9 @@ function ClassDetailPage() {
   const [sacramentDetailDialogOpen, setSacramentDetailDialogOpen] =
     React.useState(false)
   const [printCardsDialogOpen, setPrintCardsDialogOpen] = React.useState(false)
+  const [createEventDialogOpen, setCreateEventDialogOpen] =
+    React.useState(false)
+  const [eventsRefreshKey, setEventsRefreshKey] = React.useState(0)
   const [removeTarget, setRemoveTarget] = React.useState<StudentRow | null>(
     null,
   )
@@ -639,18 +643,39 @@ function ClassDetailPage() {
               </CardContent>
             </Card>
 
-            <Card size="sm" className="col-span-2 lg:col-span-1">
+            <Card
+              key={eventsRefreshKey}
+              size="sm"
+              className="col-span-2 lg:col-span-1"
+            >
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <CalendarDays className="size-5 text-muted-foreground" />
                   {t('classes.detail.upcomingEvents.title')}
                 </CardTitle>
-                <Link
-                  to="/calendar-events"
-                  className={buttonVariants({ variant: 'outline', size: 'sm' })}
-                >
-                  {t('classes.detail.upcomingEvents.viewAll')}
-                </Link>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    disabled={isInactive}
+                    onClick={() => setCreateEventDialogOpen(true)}
+                    title={t('calendarEvents.manage.addEvent')}
+                  >
+                    <Plus className="size-4" />
+                    <span className="sr-only">
+                      {t('calendarEvents.manage.addEvent')}
+                    </span>
+                  </Button>
+                  <Link
+                    to="/calendar-events"
+                    className={buttonVariants({
+                      variant: 'outline',
+                      size: 'sm',
+                    })}
+                  >
+                    {t('classes.detail.upcomingEvents.viewAll')}
+                  </Link>
+                </div>
               </CardHeader>
               <CardContent>
                 {classEvents === undefined ? (
@@ -988,6 +1013,22 @@ function ClassDetailPage() {
               }))}
             filename={`${classDetails.class.name}-cards.pdf`}
           />
+
+          {requesterId && selectedYearId && (
+            <CalendarEventDialog
+              isOpen={createEventDialogOpen}
+              onOpenChange={setCreateEventDialogOpen}
+              requesterId={requesterId}
+              academicYearId={selectedYearId}
+              defaults={{
+                scope: 'class',
+                classYearId: classDetails.classYear._id,
+              }}
+              onSuccess={() => {
+                setEventsRefreshKey((prev) => prev + 1)
+              }}
+            />
+          )}
 
           <AlertDialog
             open={removeTarget !== null}
