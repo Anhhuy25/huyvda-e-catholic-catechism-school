@@ -51,29 +51,47 @@ export function StudentDetailCards({
   const { t } = useTranslation()
 
   return (
-    <Tabs defaultValue="personal" className="w-full">
-      <TabsList className="grid w-full grid-cols-4">
-        <TabsTrigger value="personal">
+    <Tabs
+      defaultValue="personal"
+      className="w-auto -mx-4 px-4 bg-card pb-4 gap-4"
+    >
+      <TabsList
+        variant="line"
+        className="w-auto scroll-fade-x overflow-y-hidden overflow-x-auto block whitespace-nowrap border-b-border py-0 bg-linear-to-b from-background to-foreground/5 -mx-4 px-4"
+      >
+        <TabsTrigger
+          value="personal"
+          className="-mb-0.5 data-active:bg-card! data-active:shadow-md! data-active:text-primary border-0! rounded-b-none hover:bg-card px-4 h-full"
+        >
           {t('students.detail.tabs.personal')}
         </TabsTrigger>
-        <TabsTrigger value="guardians">
+        <TabsTrigger
+          value="guardians"
+          className="-mb-0.5 data-active:bg-card! data-active:shadow-md! data-active:text-primary border-0! rounded-b-none hover:bg-card px-4 h-full"
+        >
           {t('students.detail.tabs.guardians')}
         </TabsTrigger>
-        <TabsTrigger value="sacraments">
+        <TabsTrigger
+          value="sacraments"
+          className="-mb-0.5 data-active:bg-card! data-active:shadow-md! data-active:text-primary border-0! rounded-b-none hover:bg-card px-4 h-full"
+        >
           {t('students.detail.tabs.sacraments')}
         </TabsTrigger>
-        <TabsTrigger value="enrollments">
+        <TabsTrigger
+          value="enrollments"
+          className="-mb-0.5 data-active:bg-card! data-active:shadow-md! data-active:text-primary border-0! rounded-b-none hover:bg-card px-4 h-full"
+        >
           {t('students.detail.tabs.enrollments')}
         </TabsTrigger>
       </TabsList>
 
       <TabsContent value="personal" keepMounted>
         {/* Personal Info Card */}
-        <Card>
-          <CardHeader>
+        <Card className="ring-0 p-0 overflow-visible">
+          <CardHeader className="px-0">
             <CardTitle>{t('students.detail.personal.title')}</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-0">
             {data === undefined ? (
               <div className="flex flex-col gap-4">
                 {[...Array(5)].map((_, i) => (
@@ -214,14 +232,14 @@ export function StudentDetailCards({
 
       {/* Guardians Tab */}
       <TabsContent value="guardians" keepMounted>
-        <Card>
-          <CardHeader>
+        <Card className="ring-0 p-0 overflow-visible">
+          <CardHeader className="px-0">
             <CardTitle className="flex items-center gap-2">
               <Users className="size-5 text-muted-foreground" />
               {t('students.detail.guardians.title')}
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-0">
             {data === undefined ? (
               <div className="flex flex-col gap-4">
                 {[...Array(2)].map((_, i) => (
@@ -341,14 +359,14 @@ export function StudentDetailCards({
 
       {/* Sacraments Tab */}
       <TabsContent value="sacraments" keepMounted>
-        <Card>
-          <CardHeader>
+        <Card className="ring-0 overflow-visible">
+          <CardHeader className="px-0">
             <CardTitle className="flex items-center gap-2">
               <Award className="size-5 text-muted-foreground" />
               {t('students.detail.sacraments.title')}
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-0">
             {data === undefined ? (
               <div className="flex flex-col gap-4">
                 {[...Array(4)].map((_, i) => (
@@ -408,14 +426,14 @@ export function StudentDetailCards({
 
       {/* Enrollment History Tab */}
       <TabsContent value="enrollments" keepMounted>
-        <Card>
-          <CardHeader>
+        <Card className="ring-0 overflow-visible">
+          <CardHeader className="px-0">
             <CardTitle className="flex items-center gap-2">
               <GraduationCap className="size-5 text-muted-foreground" />
               {t('students.detail.enrollments.title')}
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-0">
             {data === undefined ? (
               <div className="flex flex-col gap-4">
                 {[...Array(3)].map((_, i) => (
