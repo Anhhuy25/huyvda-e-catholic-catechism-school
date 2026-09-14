@@ -638,6 +638,7 @@ describe('academicYearReport', () => {
     expect(result.branches[0].classes[0]).toMatchObject({
       className: 'Ấu Nhi 1',
       studentCount: 2,
+      sessionCount: 4,
       overallAttendanceRate: 63,
     })
 

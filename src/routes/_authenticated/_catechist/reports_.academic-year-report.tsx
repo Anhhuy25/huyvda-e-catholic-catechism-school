@@ -365,10 +365,23 @@ function AcademicYearReportPage() {
                               </Badge>
                             )}
                           </div>
-                          <CardDescription>
-                            {t('reports.academicYearReport.classes.students', {
-                              count: cls.studentCount,
-                            })}
+                          <CardDescription className="flex items-center gap-1.5 flex-wrap">
+                            <span>
+                              {t(
+                                'reports.academicYearReport.classes.students',
+                                {
+                                  count: cls.studentCount,
+                                },
+                              )}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {t(
+                                'reports.academicYearReport.classes.sessionsCounted',
+                                {
+                                  count: cls.sessionCount,
+                                },
+                              )}
+                            </span>
                           </CardDescription>
                         </CardHeader>
                         <CardContent className="pt-0">

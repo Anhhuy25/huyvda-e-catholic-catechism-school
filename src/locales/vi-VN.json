@@ -1402,6 +1402,7 @@
   "reports.academicYearReport.classes.lowAttendance": "Chuyên cần thấp",
   "reports.academicYearReport.classes.rate": "Tỷ lệ: {{rate}}%",
   "reports.academicYearReport.classes.students": "{{count}} Học sinh",
+  "reports.academicYearReport.classes.sessionsCounted": "({{count}} buổi học)",
   "reports.academicYearReport.atRisk.title": "Học sinh vắng học dài hạn",
   "reports.academicYearReport.atRisk.description": "Danh sách Học sinh vắng từ 3 buổi học liên tiếp trở lên gần đây.",
   "reports.academicYearReport.atRisk.studentCode": "Mã Học sinh",

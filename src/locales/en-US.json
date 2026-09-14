@@ -1401,6 +1401,7 @@
   "reports.academicYearReport.classes.lowAttendance": "Low Attendance",
   "reports.academicYearReport.classes.rate": "Rate: {{rate}}%",
   "reports.academicYearReport.classes.students": "{{count}} students",
+  "reports.academicYearReport.classes.sessionsCounted": "({{count}} sessions)",
   "reports.academicYearReport.atRisk.title": "At-Risk Students (Long-term Absences)",
   "reports.academicYearReport.atRisk.description": "Students with 3 or more consecutive absences in recent sessions.",
   "reports.academicYearReport.atRisk.studentCode": "Student Code",
