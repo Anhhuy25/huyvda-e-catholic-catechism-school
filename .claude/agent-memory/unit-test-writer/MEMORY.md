@@ -13,3 +13,4 @@
 - [Coverage gotchas: richtext/qr/catechists](coverage_gotchas_richtext_qr_catechists.md) — jsdom FileReader needs real File, real prod bug in richtext-editor drop/paste, vi.fn mock.instances accumulate across tests
 - [TanStack Form submit gotchas](tanstack_form_submit_and_native_constraint_gotchas.md) — handleSubmit is async (wrap assertions in waitFor); native min/max blocks click-submit, use fireEvent.submit(form) instead
 - [FieldLabel has no htmlFor](fieldlabel_no_htmlfor_association.md) — shadcn Field/FieldLabel doesn't auto-link to its Input; use row-scoped getAllByRole('textbox') indexing instead of getByLabelText
+- [Catechist route dir excluded from coverage](catechist_route_dir_excluded_from_coverage.md) — vitest.config.ts blanket-excludes src/routes/.../_catechist/** from coverage; no % ever shown for those route files

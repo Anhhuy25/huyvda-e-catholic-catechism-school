@@ -54,7 +54,13 @@ export const list = query({
             .query('studentClasses')
             .withIndex('by_class_year_id', (q) => q.eq('classYearId', cy._id))
             .collect()
-          const activeCount = scs.filter((sc) => !sc.isDeleted).length
+          const activeScs = scs.filter(
+            (sc) => !sc.isDeleted && sc.status !== 'withdrawn',
+          )
+          const students = await Promise.all(
+            activeScs.map((sc) => ctx.db.get('students', sc.studentId)),
+          )
+          const activeCount = students.filter((s) => s && !s.isDeleted).length
           return [cy._id, activeCount] as const
         }),
       )
@@ -202,7 +208,15 @@ export const listMyClasses = query({
                 q.eq('classYearId', classYear._id),
               )
               .collect()
-            studentCount = studentClasses.filter((sc) => !sc.isDeleted).length
+            const activeEnrollments = studentClasses.filter(
+              (sc) => !sc.isDeleted && sc.status !== 'withdrawn',
+            )
+            const students = await Promise.all(
+              activeEnrollments.map((sc) =>
+                ctx.db.get('students', sc.studentId),
+              ),
+            )
+            studentCount = students.filter((s) => s && !s.isDeleted).length
           }
 
           const branch = await ctx.db.get('branches', classRecord.branchId)
@@ -308,7 +322,9 @@ export const getClassDetails = query({
       .withIndex('by_class_year_id', (q) => q.eq('classYearId', classYear._id))
       .collect()
 
-    const activeEnrollments = studentClasses.filter((sc) => !sc.isDeleted)
+    const activeEnrollments = studentClasses.filter(
+      (sc) => !sc.isDeleted && sc.status !== 'withdrawn',
+    )
     const studentRecords = (
       await Promise.all(
         activeEnrollments.map(async (sc) => {

@@ -451,6 +451,29 @@ function IndexPage() {
           </div>
         </section>
 
+        {/* Video Section */}
+        <section className="py-20 bg-muted/30">
+          <div className="max-w-[900px] mx-auto px-6">
+            <div className="text-center mb-10">
+              <h2 className="font-serif text-3xl lg:text-4xl font-medium tracking-tight mb-2 text-foreground">
+                Xem Giới Thiệu
+              </h2>
+              <p className="text-muted-foreground max-w-2xl mx-auto italic text-sm">
+                Video demo nhanh về hệ thống eCCS
+              </p>
+            </div>
+            <div className="relative w-full max-w-[380px] mx-auto aspect-[9/16] rounded-2xl overflow-hidden shadow-2xl">
+              <iframe
+                className="absolute inset-0 w-full h-full"
+                src="https://www.youtube.com/embed/8zTYb9V7558"
+                title="eCCS Demo Video"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+              />
+            </div>
+          </div>
+        </section>
+
         {/* Product why us */}
         <section id="why-us" className="py-20 bg-card scroll-mt-20">
           <div className="max-w-300 mx-auto px-6">

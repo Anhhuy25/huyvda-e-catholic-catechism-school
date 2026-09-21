@@ -2,7 +2,7 @@ import * as React from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery } from 'convex/react'
 import { useTranslation } from 'react-i18next'
-import { SearchIcon } from 'lucide-react'
+import { GraduationCap, SearchIcon, UserIcon } from 'lucide-react'
 import { api } from '../../convex/_generated/api'
 import { InputGroupAddon } from './ui/input-group'
 import { Spinner } from './ui/spinner'
@@ -10,6 +10,7 @@ import type { Id } from '../../convex/_generated/dataModel'
 import { useAuth } from '~/lib/auth'
 import { isCatechist } from '~/lib/permissions'
 import { formatPersonName } from '~/lib/name'
+import { formatDate } from '~/lib/locale'
 import {
   Combobox,
   ComboboxCollection,
@@ -26,6 +27,7 @@ type SearchResultItem = {
   label: string
   value: string
   to: string
+  icon: React.ReactNode
 }
 
 export function HeaderSearch() {
@@ -55,9 +57,14 @@ export function HeaderSearch() {
 
   const studentItems: Array<SearchResultItem> = (results?.students ?? []).map(
     (s) => ({
-      label: `${formatPersonName(s.saintName, s.fullName)} (${s.studentCode})`,
+      label: `${formatPersonName(s.saintName, s.fullName)} (${s.studentCode})${
+        s.dateOfBirth
+          ? ` - ${formatDate(s.dateOfBirth, { day: '2-digit', month: '2-digit', year: 'numeric' })}`
+          : ''
+      }`,
       value: `student:${s._id}`,
       to: `/students/${s._id}`,
+      icon: <UserIcon />,
     }),
   )
 
@@ -67,6 +74,7 @@ export function HeaderSearch() {
     label: `${formatPersonName(c.saintName, c.fullName)} (${c.memberId})`,
     value: `catechist:${c._id}`,
     to: `/catechists/${c._id}`,
+    icon: <GraduationCap />,
   }))
 
   const allItems = [...studentItems, ...catechistItems]
@@ -108,7 +116,12 @@ export function HeaderSearch() {
               <ComboboxLabel>{t('header.search.students')}</ComboboxLabel>
               <ComboboxCollection>
                 {(item: SearchResultItem) => (
-                  <ComboboxItem key={item.value} value={item.value}>
+                  <ComboboxItem
+                    key={item.value}
+                    value={item.value}
+                    className="flex items-center gap-2"
+                  >
+                    {item.icon}
                     {item.label}
                   </ComboboxItem>
                 )}
@@ -120,7 +133,12 @@ export function HeaderSearch() {
               <ComboboxLabel>{t('header.search.catechists')}</ComboboxLabel>
               <ComboboxCollection>
                 {(item: SearchResultItem) => (
-                  <ComboboxItem key={item.value} value={item.value}>
+                  <ComboboxItem
+                    key={item.value}
+                    value={item.value}
+                    className="flex items-center gap-2"
+                  >
+                    {item.icon}
                     {item.label}
                   </ComboboxItem>
                 )}

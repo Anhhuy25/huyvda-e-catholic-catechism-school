@@ -28,6 +28,19 @@ vi.mock('~/components/custom/inputs/phone-input', () => ({
   ),
 }))
 
+const mockForm: any = {
+  Field: ({ children }: any) =>
+    children({
+      name: 'fullName',
+      state: {
+        value: '',
+        meta: { isTouched: false, isValid: true, errors: [] },
+      },
+      handleBlur: () => {},
+      handleChange: () => {},
+    }),
+}
+
 function selectOption(placeholderOrLabelText: string, optionName: string) {
   const trigger = screen.getByText(placeholderOrLabelText).closest('button')!
   fireEvent.click(trigger)
@@ -45,6 +58,31 @@ describe('student-form helper functions', () => {
     expect(defaults.sacraments.baptism.received).toBe(false)
     expect(defaults.guardians).toEqual([])
     expect(defaults.enrollmentEnabled).toBe(false)
+  })
+
+  it('seeds father and mother guardians with empty fields when requested', () => {
+    const defaults = defaultStudentFormValues(true)
+
+    expect(defaults.guardians).toHaveLength(2)
+    expect(defaults.guardians[0]).toMatchObject({
+      relationship: 'father',
+      contactPriority: 1,
+      fullName: '',
+      phone: '',
+      email: '',
+      isLinked: false,
+    })
+    expect(defaults.guardians[1]).toMatchObject({
+      relationship: 'mother',
+      contactPriority: 2,
+      fullName: '',
+      phone: '',
+      email: '',
+      isLinked: false,
+    })
+    expect(defaults.guardians[0].localId).not.toBe(
+      defaults.guardians[1].localId,
+    )
   })
 
   it('hasAddress correctly identifies if any address field is non-empty', () => {
@@ -77,6 +115,38 @@ describe('student-form helper functions', () => {
 describe('StudentForm component', () => {
   const requesterId = 'catechist123' as any
 
+  it('shows fullName error message when field is touched and invalid', () => {
+    const invalidForm: any = {
+      Field: ({ children }: any) =>
+        children({
+          name: 'fullName',
+          state: {
+            value: '',
+            meta: {
+              isTouched: true,
+              isValid: false,
+              errors: [{ message: 'students.form.fullName.required' }],
+            },
+          },
+          handleBlur: () => {},
+          handleChange: () => {},
+        }),
+    }
+    const values = defaultStudentFormValues()
+
+    render(
+      <StudentForm
+        mode="create"
+        values={values}
+        onChange={vi.fn()}
+        requesterId={requesterId}
+        form={invalidForm}
+      />,
+    )
+
+    expect(screen.getByText('students.form.fullName.required')).toBeDefined()
+  })
+
   it('renders form inputs and calls onChange when personal info fields change', () => {
     const onChange = vi.fn()
     const values = defaultStudentFormValues()
@@ -87,6 +157,7 @@ describe('StudentForm component', () => {
         values={values}
         onChange={onChange}
         requesterId={requesterId}
+        form={mockForm}
       />,
     )
 
@@ -114,6 +185,7 @@ describe('StudentForm component', () => {
         values={values}
         onChange={onChange}
         requesterId={requesterId}
+        form={mockForm}
       />,
     )
 
@@ -147,6 +219,7 @@ describe('StudentForm component', () => {
         values={values}
         onChange={onChange}
         requesterId={requesterId}
+        form={mockForm}
       />,
     )
 
@@ -165,6 +238,7 @@ describe('StudentForm component', () => {
         values={values}
         onChange={onChange}
         requesterId={requesterId}
+        form={mockForm}
       />,
     )
 
@@ -210,6 +284,7 @@ describe('StudentForm component', () => {
         values={valuesWithGuardian}
         onChange={onChange}
         requesterId={requesterId}
+        form={mockForm}
       />,
     )
 
@@ -240,6 +315,7 @@ describe('StudentForm component', () => {
         values={values}
         onChange={onChange}
         requesterId={requesterId}
+        form={mockForm}
       />,
     )
 
@@ -257,6 +333,7 @@ describe('StudentForm component', () => {
         values={values}
         onChange={onChange}
         requesterId={requesterId}
+        form={mockForm}
       />,
     )
 
@@ -300,6 +377,7 @@ describe('StudentForm component', () => {
         values={values}
         onChange={onChange}
         requesterId={requesterId}
+        form={mockForm}
       />,
     )
 
@@ -342,6 +420,7 @@ describe('StudentForm component', () => {
         values={values}
         onChange={onChange}
         requesterId={requesterId}
+        form={mockForm}
       />,
     )
 
@@ -374,6 +453,7 @@ describe('StudentForm component', () => {
         values={values}
         onChange={onChange}
         requesterId={requesterId}
+        form={mockForm}
       />,
     )
 
@@ -433,6 +513,7 @@ describe('StudentForm component', () => {
         values={values}
         onChange={onChange}
         requesterId={requesterId}
+        form={mockForm}
       />,
     )
 
@@ -459,6 +540,7 @@ describe('StudentForm component', () => {
         values={values}
         onChange={onChange}
         requesterId={requesterId}
+        form={mockForm}
       />,
     )
 
@@ -479,6 +561,7 @@ describe('StudentForm component', () => {
         values={values}
         onChange={onChange}
         requesterId={requesterId}
+        form={mockForm}
       />,
     )
 
@@ -522,6 +605,7 @@ describe('StudentForm component', () => {
         values={values}
         onChange={onChange}
         requesterId={requesterId}
+        form={mockForm}
       />,
     )
 
@@ -623,6 +707,7 @@ describe('StudentForm component', () => {
         values={values}
         onChange={onChange}
         requesterId={requesterId}
+        form={mockForm}
       />,
     )
 
@@ -674,6 +759,7 @@ describe('StudentForm component', () => {
         values={values}
         onChange={onChange}
         requesterId={requesterId}
+        form={mockForm}
       />,
     )
 
@@ -717,6 +803,7 @@ describe('StudentForm component', () => {
         values={values}
         onChange={onChange}
         requesterId={requesterId}
+        form={mockForm}
       />,
     )
 

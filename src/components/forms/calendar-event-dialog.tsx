@@ -37,11 +37,14 @@ import { RichTextEditor } from '~/components/custom/richtext-editor'
 type MyScopes = FunctionReturnType<typeof api.calendarEvents.myScopes>
 type CalendarEventDoc = FunctionReturnType<typeof api.calendarEvents.get>
 
-interface CalendarEventDefaults {
+export interface CalendarEventDefaults {
   date?: string
   endDate?: string
   startTime?: string
   endTime?: string
+  scope?: 'board' | 'branch' | 'class'
+  branchId?: Id<'branches'>
+  classYearId?: Id<'classYears'>
 }
 
 interface CalendarEventDialogProps {
@@ -52,6 +55,7 @@ interface CalendarEventDialogProps {
   event?: CalendarEventDoc
   defaultDate?: string
   defaults?: CalendarEventDefaults
+  onSuccess?: () => void
 }
 
 function emptyDescription(): string {
@@ -77,9 +81,9 @@ function buildDefaultValues(
     liturgicalDate: event?.liturgicalDate ?? '',
     description: event?.description ?? emptyDescription(),
     severity: event?.severity ?? ('medium' as const),
-    scope: event?.scope ?? ('board' as const),
-    branchId: event?.branchId,
-    classYearId: event?.classYearId,
+    scope: event?.scope ?? defaults?.scope ?? ('board' as const),
+    branchId: event?.branchId ?? defaults?.branchId,
+    classYearId: event?.classYearId ?? defaults?.classYearId,
   }
 }
 
@@ -91,6 +95,7 @@ export function CalendarEventDialog({
   event,
   defaultDate,
   defaults,
+  onSuccess,
 }: CalendarEventDialogProps) {
   const { t } = useTranslation()
   const isEdit = !!event
@@ -197,6 +202,7 @@ export function CalendarEventDialog({
           })
           toast.success(t('calendarEvents.dialog.createSuccess'))
         }
+        onSuccess?.()
         onOpenChange(false)
       } catch (error) {
         toast.error(translateConvexError(error, t))

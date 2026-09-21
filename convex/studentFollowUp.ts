@@ -15,6 +15,10 @@ type FollowUpStudent = {
   fullName: string
   attendanceRate: number
   scoreEntriesCount: number
+  totalExams: number
+  missedExamsCount: number
+  hasAttendanceIssue: boolean
+  hasScoreIssue: boolean
 }
 
 async function buildStudentsNeedingFollowUp(
@@ -50,6 +54,10 @@ async function buildStudentsNeedingFollowUp(
     })
   }
 
+  if (activeEnrollments.length === 0) {
+    return []
+  }
+
   // Sessions for this classYear (class-scoped only)
   const allSessions = await ctx.db
     .query('classSessions')
@@ -60,21 +68,37 @@ async function buildStudentsNeedingFollowUp(
 
   const classScopedSessions = allSessions.filter(isClassScopedSession)
 
-  if (classScopedSessions.length === 0 || activeEnrollments.length === 0) {
+  // Score columns for this class year
+  const scoreColumns = await ctx.db
+    .query('scoreColumns')
+    .withIndex('by_class_year_id_and_semester_id', (q) =>
+      q.eq('classYearId', classYearId),
+    )
+    .collect()
+
+  const activeColumns = scoreColumns.filter((c) => !c.isDeleted)
+  const totalExams = activeColumns.length
+
+  if (classScopedSessions.length < 3 && totalExams === 0) {
     return []
   }
 
   // Attendance records
-  const attendanceRecords = (
-    await Promise.all(
-      classScopedSessions.map((session) =>
-        ctx.db
-          .query('attendanceRecords')
-          .withIndex('by_session_id', (q) => q.eq('sessionId', session._id))
-          .collect(),
-      ),
-    )
-  ).flat()
+  const attendanceRecords =
+    classScopedSessions.length > 0
+      ? (
+          await Promise.all(
+            classScopedSessions.map((session) =>
+              ctx.db
+                .query('attendanceRecords')
+                .withIndex('by_session_id', (q) =>
+                  q.eq('sessionId', session._id),
+                )
+                .collect(),
+            ),
+          )
+        ).flat()
+      : []
 
   const statusByStudentClass = new Map<
     Id<'studentClasses'>,
@@ -88,67 +112,76 @@ async function buildStudentsNeedingFollowUp(
     statusByStudentClass.set(record.studentClassId, perSession)
   }
 
-  // Score entries for this class year
-  const scoreColumns = await ctx.db
-    .query('scoreColumns')
-    .withIndex('by_class_year_id_and_semester_id', (q) =>
-      q.eq('classYearId', classYearId),
-    )
-    .collect()
-
-  const activeColumns = scoreColumns
-    .filter((c) => !c.isDeleted)
-    .map((c) => c._id)
-
-  const scoreEntries = (
-    await Promise.all(
-      activeColumns.map((columnId) =>
-        ctx.db
-          .query('scoreEntries')
-          .withIndex('by_score_column_id', (q) =>
-            q.eq('scoreColumnId', columnId),
+  // Score entries for active columns
+  const scoreEntries =
+    activeColumns.length > 0
+      ? (
+          await Promise.all(
+            activeColumns.map((column) =>
+              ctx.db
+                .query('scoreEntries')
+                .withIndex('by_score_column_id', (q) =>
+                  q.eq('scoreColumnId', column._id),
+                )
+                .collect(),
+            ),
           )
-          .collect(),
-      ),
-    )
-  ).flat()
+        ).flat()
+      : []
 
-  const scoreEntriesByStudent = new Map<
+  const takenColumnIdsByStudent = new Map<
     Id<'studentClasses'>,
-    Array<Doc<'scoreEntries'>>
+    Set<Id<'scoreColumns'>>
   >()
   for (const entry of scoreEntries) {
     if (entry.isDeleted) continue
-    const current = scoreEntriesByStudent.get(entry.studentClassId) ?? []
-    current.push(entry)
-    scoreEntriesByStudent.set(entry.studentClassId, current)
+    if (entry.scoreValue === undefined && entry.scoreLabel === undefined)
+      continue
+    let set = takenColumnIdsByStudent.get(entry.studentClassId)
+    if (!set) {
+      set = new Set()
+      takenColumnIdsByStudent.set(entry.studentClassId, set)
+    }
+    set.add(entry.scoreColumnId)
   }
 
   // Compute metrics per student
   const result: Array<FollowUpStudent> = []
-
   const scheduledSessionIds = classScopedSessions.map((s) => s._id)
 
   for (const enrollment of activeEnrollments) {
-    const { rate } = computeAttendanceSummary(
+    const summary = computeAttendanceSummary(
       scheduledSessionIds,
       statusByStudentClass.get(enrollment.studentClassId) ?? new Map(),
     )
-    const attendanceRate = Math.round(rate * 100)
+    const attendanceRate = Math.round(summary.rate * 100)
+    const checkIns = summary.present + summary.late
+    const sessionsWithoutCheckIn = scheduledSessionIds.length - checkIns
 
-    // Score entries count
-    const entries = scoreEntriesByStudent.get(enrollment.studentClassId) ?? []
-    const scoreEntriesCount = entries.length
+    const takenExamsCount =
+      takenColumnIdsByStudent.get(enrollment.studentClassId)?.size ?? 0
+    const missedExamsCount = Math.max(0, totalExams - takenExamsCount)
 
-    // Filter: attendance < 75% AND (low score engagement OR few entries)
-    if (attendanceRate < 75 && scoreEntriesCount < 3) {
+    const hasAttendanceIssue =
+      classScopedSessions.length >= 3 &&
+      sessionsWithoutCheckIn >= 3 &&
+      attendanceRate < 75
+
+    const hasScoreIssue =
+      totalExams >= 1 && missedExamsCount / totalExams >= 0.3
+
+    if (hasAttendanceIssue || hasScoreIssue) {
       result.push({
         studentId: enrollment.studentId,
         studentClassId: enrollment.studentClassId,
         className: classRecord.name,
         fullName: enrollment.fullName,
         attendanceRate,
-        scoreEntriesCount,
+        scoreEntriesCount: takenExamsCount,
+        totalExams,
+        missedExamsCount,
+        hasAttendanceIssue,
+        hasScoreIssue,
       })
     }
   }

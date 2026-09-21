@@ -4,6 +4,7 @@ import {
   ENROLLMENT_ERRORS,
   EXTRACURRICULAR_ERRORS,
 } from './errors'
+import { firstActive } from './dbHelpers'
 import type { Doc, Id } from '../_generated/dataModel'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
 
@@ -347,13 +348,15 @@ export async function checkEditStudentPermission(
       ? prefetched.activeAcademicYearId
       : await getActiveAcademicYear(ctx)
     if (activeYearId) {
-      const boardAssignment = await ctx.db
-        .query('academicYearAssignments')
-        .withIndex('by_academic_year_id_and_catechist_id', (q) =>
-          q.eq('academicYearId', activeYearId!).eq('catechistId', requesterId),
-        )
-        .first()
-      isBoard = !!(boardAssignment && !boardAssignment.isDeleted)
+      isBoard = !!(await firstActive(
+        ctx.db
+          .query('academicYearAssignments')
+          .withIndex('by_academic_year_id_and_catechist_id', (q) =>
+            q
+              .eq('academicYearId', activeYearId!)
+              .eq('catechistId', requesterId),
+          ),
+      ))
     } else {
       isBoard = false
     }
@@ -376,36 +379,29 @@ export async function checkEditStudentPermission(
     return true
   }
 
+  // Non-floating students can only be edited if an active academic year exists
+  if (!activeYearId) {
+    return false
+  }
+
   for (const enrollment of nonDeletedEnrollments) {
     const classYear = await ctx.db.get('classYears', enrollment.classYearId)
     if (!classYear || classYear.isDeleted) continue
 
-    // Also check if requester is a board member for this specific enrollment's academic year
-    // (if it differs from activeYearId)
-    if (classYear.academicYearId !== activeYearId) {
-      const boardAssignment = await ctx.db
-        .query('academicYearAssignments')
-        .withIndex('by_academic_year_id_and_catechist_id', (q) =>
-          q
-            .eq('academicYearId', classYear.academicYearId)
-            .eq('catechistId', requesterId),
-        )
-        .first()
-      if (boardAssignment && !boardAssignment.isDeleted) {
-        return true
-      }
-    }
+    // Only classes in the active academic year allow editing
+    if (classYear.academicYearId !== activeYearId) continue
 
     // Check if requester is assigned to this class year
-    const classAssignment = await ctx.db
-      .query('classCatechists')
-      .withIndex('by_catechist_id_and_class_year_id', (q) =>
-        q
-          .eq('catechistId', requesterId)
-          .eq('classYearId', enrollment.classYearId),
-      )
-      .first()
-    if (classAssignment && !classAssignment.isDeleted) {
+    const classAssignment = await firstActive(
+      ctx.db
+        .query('classCatechists')
+        .withIndex('by_catechist_id_and_class_year_id', (q) =>
+          q
+            .eq('catechistId', requesterId)
+            .eq('classYearId', enrollment.classYearId),
+        ),
+    )
+    if (classAssignment) {
       return true
     }
 
@@ -413,16 +409,17 @@ export async function checkEditStudentPermission(
     const classDoc = await ctx.db.get('classes', classYear.classId)
     if (!classDoc || classDoc.isDeleted) continue
 
-    const branchAssignment = await ctx.db
-      .query('branchAssignments')
-      .withIndex('by_academic_year_id_and_catechist_id_and_branch_id', (q) =>
-        q
-          .eq('academicYearId', classYear.academicYearId)
-          .eq('catechistId', requesterId)
-          .eq('branchId', classDoc.branchId),
-      )
-      .first()
-    if (branchAssignment && !branchAssignment.isDeleted) {
+    const branchAssignment = await firstActive(
+      ctx.db
+        .query('branchAssignments')
+        .withIndex('by_academic_year_id_and_catechist_id_and_branch_id', (q) =>
+          q
+            .eq('academicYearId', activeYearId)
+            .eq('catechistId', requesterId)
+            .eq('branchId', classDoc.branchId),
+        ),
+    )
+    if (branchAssignment) {
       return true
     }
   }
@@ -464,15 +461,16 @@ export async function checkStudentSensitiveInfoPermission(
     if (classYear.academicYearId !== activeYearId) continue
 
     // Check if requester is assigned to this class year
-    const classAssignment = await ctx.db
-      .query('classCatechists')
-      .withIndex('by_catechist_id_and_class_year_id', (q) =>
-        q
-          .eq('catechistId', requesterId)
-          .eq('classYearId', enrollment.classYearId),
-      )
-      .first()
-    if (classAssignment && !classAssignment.isDeleted) {
+    const classAssignment = await firstActive(
+      ctx.db
+        .query('classCatechists')
+        .withIndex('by_catechist_id_and_class_year_id', (q) =>
+          q
+            .eq('catechistId', requesterId)
+            .eq('classYearId', enrollment.classYearId),
+        ),
+    )
+    if (classAssignment) {
       return true
     }
   }

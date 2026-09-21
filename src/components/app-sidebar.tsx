@@ -39,6 +39,7 @@ import { YearSwitcher } from '~/components/year-switcher'
 import { setLanguage } from '~/lib/i18n'
 import { isAdmin, isCatechist } from '~/lib/permissions'
 import { useSelectedAcademicYear } from '~/lib/academic-year'
+import { formatPersonName } from '~/lib/name'
 import {
   Sidebar,
   SidebarContent,
@@ -67,6 +68,36 @@ const emailAdmin = import.meta.env.VITE_ADMIN_EMAIL
 function NavUser({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
   const { t } = useTranslation()
   const { isMobile } = useSidebar()
+  const { selectedYearId } = useSelectedAcademicYear()
+
+  const catechistSidebarInfo = useQuery(
+    api.catechists.getMySidebarInfo,
+    isCatechist(user)
+      ? {
+          requesterId: user.userDocId as Id<'catechists'>,
+          academicYearId: selectedYearId ?? undefined,
+        }
+      : 'skip',
+  )
+  const studentSidebarInfo = useQuery(
+    api.students.getMySidebarInfo,
+    !isCatechist(user)
+      ? { requesterId: user.userDocId as Id<'students'> }
+      : 'skip',
+  )
+
+  const saintName = isCatechist(user)
+    ? catechistSidebarInfo?.saintName
+    : studentSidebarInfo?.saintName
+  const displayName = formatPersonName(saintName, user.fullName)
+
+  const roleLabel = catechistSidebarInfo?.isBoardMember
+    ? t('nav.role.boardMember')
+    : catechistSidebarInfo && catechistSidebarInfo.branchNames.length > 0
+      ? t('nav.role.branchManager', {
+          branchName: catechistSidebarInfo.branchNames.join(', '),
+        })
+      : null
 
   const trigger = (
     <SidebarMenuButton
@@ -80,9 +111,10 @@ function NavUser({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
         className="h-8 w-8"
       />
       <div className="grid flex-1 text-left text-sm leading-tight">
-        <span className="truncate font-medium">{user.fullName}</span>
+        <span className="truncate font-medium">{displayName}</span>
         <span className="truncate text-xs text-muted-foreground">
           {t('catechists.col.memberId')}: {user.memberId.toString()}
+          {roleLabel ? ` · ${roleLabel}` : ''}
         </span>
       </div>
       <ChevronsUpDown className="ml-auto size-4" />
@@ -110,11 +142,10 @@ function NavUser({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
                     className="h-8 w-8"
                   />
                   <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-medium">
-                      {user.fullName}
-                    </span>
+                    <span className="truncate font-medium">{displayName}</span>
                     <span className="truncate text-xs">
                       {t('catechists.col.memberId')}: {user.memberId.toString()}
+                      {roleLabel ? ` · ${roleLabel}` : ''}
                     </span>
                   </div>
                 </div>
@@ -358,7 +389,7 @@ export function AppSidebar({
             <SidebarGroupLabel className="text-primary">
               {t('nav.myClasses')}
             </SidebarGroupLabel>
-            <SidebarMenu className="bg-accent/50 p-2 rounded-lg gap-2">
+            <SidebarMenu className="bg-accent/50 p-2 rounded-lg gap-2 group-data-[state=collapsed]:p-0">
               {myClasses === undefined ? (
                 <SidebarMenuItem>
                   <div className="px-3 py-2 text-sm text-muted-foreground">

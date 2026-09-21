@@ -1,7 +1,14 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { useQuery } from 'convex/react'
 import { useParams } from '@tanstack/react-router'
+import { toast } from 'sonner'
 import { Route } from './catechists_.$id'
 import { useAuth } from '~/lib/auth'
 
@@ -556,5 +563,140 @@ describe('CatechistDetailPage', () => {
     expect(
       screen.queryByText('adminAccounts.actions.loginAs'),
     ).not.toBeInTheDocument()
+  })
+})
+
+describe('CatechistDetailPage delete flow', () => {
+  // useMutation is mocked at module level to always return
+  // mockLoginAsCatechist, regardless of which api function is requested
+  // (see the convex/react mock above), so it doubles as the softDelete mock.
+  const deleteMock = mockLoginAsCatechist
+
+  function mockQueries() {
+    vi.mocked(useQuery).mockImplementation((queryRef: any, _args?: any) => {
+      const path = queryRef?.[Symbol.for('functionName')]
+      if (path === 'catechists:get') {
+        return mockCatechist
+      }
+      if (path === 'catechists:getClassAssignments') {
+        return mockClassAssignments
+      }
+      return undefined
+    })
+  }
+
+  function mockAuth(role: 'admin' | 'user') {
+    vi.mocked(useAuth).mockReturnValue({
+      login: vi.fn(),
+      logout: vi.fn(),
+      user: {
+        _id: role === 'admin' ? 'user-admin' : 'user-2',
+        userDocId: role === 'admin' ? 'catechist-admin' : 'catechist-2',
+        role,
+      } as any,
+    })
+  }
+
+  beforeEach(() => {
+    vi.mocked(useParams).mockReturnValue({ id: 'catechist-1' })
+    deleteMock.mockReset().mockResolvedValue(undefined)
+    mockNavigate.mockClear()
+    vi.mocked(toast.success).mockClear()
+    vi.mocked(toast.error).mockClear()
+    mockQueries()
+  })
+
+  test('shows Delete button for admin', () => {
+    mockAuth('admin')
+
+    const Component = (Route as any).options.component
+    render(<Component />)
+
+    expect(screen.getByText('common.delete')).toBeInTheDocument()
+  })
+
+  test('hides Delete button for non-admin', () => {
+    mockAuth('user')
+
+    const Component = (Route as any).options.component
+    render(<Component />)
+
+    expect(screen.queryByText('common.delete')).not.toBeInTheDocument()
+  })
+
+  test('clicking Delete opens confirmation dialog with title/description', () => {
+    mockAuth('admin')
+
+    const Component = (Route as any).options.component
+    render(<Component />)
+
+    fireEvent.click(screen.getByText('common.delete'))
+
+    const dialog = screen.getByRole('alertdialog')
+    expect(
+      within(dialog).getByText('catechists.delete.title'),
+    ).toBeInTheDocument()
+  })
+
+  test('confirming delete calls softDelete mutation, shows success toast, and navigates', async () => {
+    mockAuth('admin')
+
+    const Component = (Route as any).options.component
+    render(<Component />)
+
+    fireEvent.click(screen.getByText('common.delete'))
+    const dialog = screen.getByRole('alertdialog')
+    fireEvent.click(within(dialog).getByText('catechists.delete.confirm'))
+
+    await waitFor(() => {
+      expect(deleteMock).toHaveBeenCalledWith({
+        requesterId: 'catechist-admin',
+        catechistId: 'catechist-1',
+      })
+    })
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith('catechists.deleted')
+    })
+    expect(mockNavigate).toHaveBeenCalledWith({ to: '/catechists' })
+
+    await waitFor(() => {
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    })
+  })
+
+  test('on mutation rejection shows error toast, closes dialog, and does not navigate', async () => {
+    deleteMock.mockRejectedValue(new Error('CATECHIST_IN_USE_BY_ASSIGNMENT'))
+    mockAuth('admin')
+
+    const Component = (Route as any).options.component
+    render(<Component />)
+
+    fireEvent.click(screen.getByText('common.delete'))
+    const dialog = screen.getByRole('alertdialog')
+    fireEvent.click(within(dialog).getByText('catechists.delete.confirm'))
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalled()
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    })
+    expect(mockNavigate).not.toHaveBeenCalledWith({ to: '/catechists' })
+  })
+
+  test('cancel closes dialog without calling the mutation', () => {
+    mockAuth('admin')
+
+    const Component = (Route as any).options.component
+    render(<Component />)
+
+    fireEvent.click(screen.getByText('common.delete'))
+    const dialog = screen.getByRole('alertdialog')
+    fireEvent.click(within(dialog).getByText('common.cancel'))
+
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(deleteMock).not.toHaveBeenCalled()
   })
 })

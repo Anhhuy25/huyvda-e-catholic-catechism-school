@@ -468,7 +468,6 @@ function EditStudentForm({
     return <div className="p-4 text-destructive">{t('students.notFound')}</div>
   }
 
-  // @ts-ignore - isEditable field is present on backend type
   if (!studentData.isEditable) {
     return (
       <div className="p-4 text-destructive flex items-center justify-center h-full">
@@ -523,6 +522,7 @@ function EditStudentForm({
           values={values}
           onChange={handleChange}
           requesterId={requesterId}
+          form={form}
         />
 
         <div className="flex justify-end gap-2">

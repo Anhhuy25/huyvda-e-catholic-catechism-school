@@ -26,6 +26,7 @@ interface AttendanceSummaryReportProps {
   classId: Id<'classes'>
   academicYearId: Id<'academicYears'>
   requesterId: Id<'catechists'>
+  canManage?: boolean
 }
 
 type AttendanceStatusValue =
@@ -78,6 +79,7 @@ export function AttendanceSummaryReport({
   classId,
   academicYearId,
   requesterId,
+  canManage = false,
 }: AttendanceSummaryReportProps) {
   const { t } = useTranslation()
   const [selectedSemester, setSelectedSemester] =
@@ -301,12 +303,6 @@ export function AttendanceSummaryReport({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap justify-end">
-        <Button variant="outline" size="sm" onClick={handleExportCsv}>
-          <Download className="h-4 w-4" />
-          <span>{t('classes.export.csv')}</span>
-        </Button>
-      </div>
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
           <CardHeader>
@@ -349,8 +345,18 @@ export function AttendanceSummaryReport({
         </Card>
       </div>
 
-      <Card>
-        <CardContent className="pt-6">
+      <Card className="border-0 ring-0 p-0 overflow-visible">
+        {canManage && (
+          <CardHeader className="px-0">
+            <div className="flex flex-wrap justify-end">
+              <Button variant="outline" size="sm" onClick={handleExportCsv}>
+                <Download className="h-4 w-4" />
+                <span>{t('classes.export.csv')}</span>
+              </Button>
+            </div>
+          </CardHeader>
+        )}
+        <CardContent className="px-0">
           <DataTable
             columns={columns}
             data={summary.students}

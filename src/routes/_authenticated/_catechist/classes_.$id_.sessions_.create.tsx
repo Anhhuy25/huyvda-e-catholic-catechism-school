@@ -74,28 +74,28 @@ const STATUS_CONFIG = {
     textColor: 'text-green-800',
     iconColor: 'text-neutral-900',
     Icon: CheckCircle2,
-    labelKey: 'attendance.status.present',
+    labelKey: 'attendance.status.present.short',
   },
   late: {
     bg: 'bg-[#fef08a]',
     textColor: 'text-yellow-800',
     iconColor: 'text-neutral-900',
     Icon: Clock,
-    labelKey: 'attendance.status.late',
+    labelKey: 'attendance.status.late.short',
   },
   unexcused_absence: {
     bg: 'bg-[#fca5a5]',
     textColor: 'text-red-800',
     iconColor: 'text-neutral-900',
     Icon: AlertCircle,
-    labelKey: 'attendance.status.unexcused_absence',
+    labelKey: 'attendance.status.unexcused_absence.short',
   },
   excused_absence: {
     bg: 'bg-[#e9d5ff]',
     textColor: 'text-purple-800',
     iconColor: 'text-neutral-900',
     Icon: AlertTriangle,
-    labelKey: 'attendance.status.excused_absence',
+    labelKey: 'attendance.status.excused_absence.short',
   },
 }
 
@@ -575,7 +575,7 @@ function CreateSessionWithAttendancePage() {
                           >
                             <OptIcon className="h-4.5 w-4.5 text-neutral-900" />
                             <span className="text-[8px] font-extrabold text-neutral-900 uppercase tracking-tight text-center leading-none">
-                              {t(opt.labelKey).split(' ').pop()}
+                              {t(opt.labelKey)}
                             </span>
                           </button>
                         )

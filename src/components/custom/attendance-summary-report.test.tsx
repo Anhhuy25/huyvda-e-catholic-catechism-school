@@ -156,12 +156,13 @@ function mockQueries(
   }) as any)
 }
 
-function renderReport() {
+function renderReport(canManage = false) {
   return render(
     <AttendanceSummaryReport
       classId={classId}
       academicYearId={academicYearId}
       requesterId={requesterId}
+      canManage={canManage}
     />,
   )
 }
@@ -575,7 +576,7 @@ describe('AttendanceSummaryReport', () => {
         ],
       })
       mockQueries(data, makeSemesters())
-      renderReport()
+      renderReport(true)
 
       fireEvent.click(screen.getByText('classes.export.csv'))
 
@@ -616,7 +617,7 @@ describe('AttendanceSummaryReport', () => {
     test('renders an em dash for the rate cell when sessionCount is 0', () => {
       const data = makeGridData({ sessions: [] })
       mockQueries(data, makeSemesters())
-      renderReport()
+      renderReport(true)
 
       fireEvent.click(screen.getByText('classes.export.csv'))
 

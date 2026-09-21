@@ -11,6 +11,7 @@ import {
   assertEditStudentPermission,
   assertValidStudent,
   checkEditStudentPermission,
+  checkStudentSensitiveInfoPermission,
   getActiveAcademicYear,
   getEffectivePermissions,
   requireActiveAcademicYear,
@@ -670,6 +671,150 @@ describe('authz functions', () => {
       expect(allowed).toBe(true)
     })
 
+    test('allows branch head to edit student in their branch', async () => {
+      const t = convexTest(schema, modules)
+      const userId = await t.run(async (ctx) =>
+        ctx.db.insert('catechists', {
+          memberId: 'C-BH',
+          fullName: 'Branch Head',
+          role: 'user',
+          isActive: true,
+          isDeleted: false,
+        }),
+      )
+      const yearId = await t.run(async (ctx) =>
+        ctx.db.insert('academicYears', {
+          name: '2024',
+          startDate: '2024-01-01',
+          endDate: '2024-12-31',
+          timezone: 'Asia/Ho_Chi_Minh',
+          isActive: true,
+          isDeleted: false,
+        }),
+      )
+      const branchId = await t.run(async (ctx) =>
+        ctx.db.insert('branches', {
+          name: 'B1',
+          isDeleted: false,
+          sortOrder: 1,
+        }),
+      )
+      const classId = await t.run(async (ctx) =>
+        ctx.db.insert('classes', {
+          name: 'Class 1',
+          branchId,
+          isDeleted: false,
+        }),
+      )
+      const classYearId = await t.run(async (ctx) =>
+        ctx.db.insert('classYears', {
+          classId,
+          academicYearId: yearId,
+          isDeleted: false,
+        }),
+      )
+      const studentId = await t.run(async (ctx) =>
+        ctx.db.insert('students', {
+          studentCode: 'HS-BH',
+          fullName: 'Student Branch',
+          isActive: true,
+          isDeleted: false,
+          createdAt: Date.now(),
+        }),
+      )
+
+      await t.run(async (ctx) => {
+        await ctx.db.insert('studentClasses', {
+          studentId,
+          classYearId,
+          isPrimaryClass: true,
+          enrolledDate: '2024-01-01',
+          status: 'active',
+          isDeleted: false,
+        })
+        await ctx.db.insert('branchAssignments', {
+          catechistId: userId,
+          academicYearId: yearId,
+          branchId,
+          isDeleted: false,
+        })
+      })
+
+      const allowed = await t.run(async (ctx) =>
+        checkEditStudentPermission(ctx, userId, studentId),
+      )
+      expect(allowed).toBe(true)
+    })
+
+    test('denies non-floating student edit when no active academic year exists', async () => {
+      const t = convexTest(schema, modules)
+      const userId = await t.run(async (ctx) =>
+        ctx.db.insert('catechists', {
+          memberId: 'C-NoActive',
+          fullName: 'Teacher',
+          role: 'user',
+          isActive: true,
+          isDeleted: false,
+        }),
+      )
+      const yearId = await t.run(async (ctx) =>
+        ctx.db.insert('academicYears', {
+          name: '2024',
+          startDate: '2024-01-01',
+          endDate: '2024-12-31',
+          timezone: 'Asia/Ho_Chi_Minh',
+          isActive: false,
+          isDeleted: false,
+        }),
+      )
+      const branchId = await t.run(async (ctx) =>
+        ctx.db.insert('branches', {
+          name: 'B1',
+          isDeleted: false,
+          sortOrder: 1,
+        }),
+      )
+      const classId = await t.run(async (ctx) =>
+        ctx.db.insert('classes', {
+          name: 'Class 1',
+          branchId,
+          isDeleted: false,
+        }),
+      )
+      const classYearId = await t.run(async (ctx) =>
+        ctx.db.insert('classYears', {
+          classId,
+          academicYearId: yearId,
+          isDeleted: false,
+        }),
+      )
+      const studentId = await t.run(async (ctx) =>
+        ctx.db.insert('students', {
+          studentCode: 'HS-NoActive',
+          fullName: 'Student No Active',
+          isActive: true,
+          isDeleted: false,
+          createdAt: Date.now(),
+        }),
+      )
+
+      await t.run(async (ctx) => {
+        await ctx.db.insert('studentClasses', {
+          studentId,
+          classYearId,
+          isPrimaryClass: true,
+          enrolledDate: '2024-01-01',
+          status: 'active',
+          isDeleted: false,
+        })
+      })
+
+      const allowed = await t.run(async (ctx) =>
+        checkEditStudentPermission(ctx, userId, studentId),
+      )
+      expect(allowed).toBe(false)
+    })
+
     test('denies catechist not assigned to class or branch when student has active enrollment', async () => {
       const t = convexTest(schema, modules)
       const userId = await t.run(async (ctx) =>
@@ -743,6 +888,473 @@ describe('authz functions', () => {
           assertEditStudentPermission(ctx, userId, studentId),
         ),
       ).rejects.toThrow(AUTHZ_ERRORS.CANNOT_EDIT_STUDENT)
+    })
+
+    test('denies catechist from editing student when enrollment belongs to an inactive academic year', async () => {
+      const t = convexTest(schema, modules)
+      const userId = await t.run(async (ctx) =>
+        ctx.db.insert('catechists', {
+          memberId: 'C5-inactive',
+          fullName: 'Past Teacher',
+          role: 'user',
+          isActive: true,
+          isDeleted: false,
+        }),
+      )
+      const inactiveYearId = await t.run(async (ctx) =>
+        ctx.db.insert('academicYears', {
+          name: '2023',
+          startDate: '2023-01-01',
+          endDate: '2023-12-31',
+          timezone: 'Asia/Ho_Chi_Minh',
+          isActive: false,
+          isDeleted: false,
+        }),
+      )
+      // active year exists in the system
+      await t.run(async (ctx) =>
+        ctx.db.insert('academicYears', {
+          name: '2024',
+          startDate: '2024-01-01',
+          endDate: '2024-12-31',
+          timezone: 'Asia/Ho_Chi_Minh',
+          isActive: true,
+          isDeleted: false,
+        }),
+      )
+      const branchId = await t.run(async (ctx) =>
+        ctx.db.insert('branches', {
+          name: 'B1',
+          isDeleted: false,
+          sortOrder: 1,
+        }),
+      )
+      const classId = await t.run(async (ctx) =>
+        ctx.db.insert('classes', {
+          name: 'Class 1',
+          branchId,
+          isDeleted: false,
+        }),
+      )
+      const classYearId = await t.run(async (ctx) =>
+        ctx.db.insert('classYears', {
+          classId,
+          academicYearId: inactiveYearId,
+          isDeleted: false,
+        }),
+      )
+      const studentId = await t.run(async (ctx) =>
+        ctx.db.insert('students', {
+          studentCode: 'HS005',
+          fullName: 'Student Five',
+          isActive: true,
+          isDeleted: false,
+          createdAt: Date.now(),
+        }),
+      )
+
+      await t.run(async (ctx) => {
+        await ctx.db.insert('studentClasses', {
+          studentId,
+          classYearId,
+          isPrimaryClass: true,
+          enrolledDate: '2023-01-01',
+          status: 'active',
+          isDeleted: false,
+        })
+        await ctx.db.insert('classCatechists', {
+          catechistId: userId,
+          classYearId,
+          academicYearId: inactiveYearId,
+          role: 'homeroom',
+          isDeleted: false,
+        })
+      })
+
+      const allowed = await t.run(async (ctx) =>
+        checkEditStudentPermission(ctx, userId, studentId),
+      )
+      expect(allowed).toBe(false)
+    })
+
+    test('allows class catechist when a soft-deleted classCatechists row precedes a valid one for the same key', async () => {
+      const t = convexTest(schema, modules)
+      const userId = await t.run(async (ctx) =>
+        ctx.db.insert('catechists', {
+          memberId: 'C-Dup1',
+          fullName: 'Rehired Teacher',
+          role: 'user',
+          isActive: true,
+          isDeleted: false,
+        }),
+      )
+      const yearId = await t.run(async (ctx) =>
+        ctx.db.insert('academicYears', {
+          name: '2024',
+          startDate: '2024-01-01',
+          endDate: '2024-12-31',
+          timezone: 'Asia/Ho_Chi_Minh',
+          isActive: true,
+          isDeleted: false,
+        }),
+      )
+      const branchId = await t.run(async (ctx) =>
+        ctx.db.insert('branches', {
+          name: 'B1',
+          isDeleted: false,
+          sortOrder: 1,
+        }),
+      )
+      const classId = await t.run(async (ctx) =>
+        ctx.db.insert('classes', {
+          name: 'Class 1',
+          branchId,
+          isDeleted: false,
+        }),
+      )
+      const classYearId = await t.run(async (ctx) =>
+        ctx.db.insert('classYears', {
+          classId,
+          academicYearId: yearId,
+          isDeleted: false,
+        }),
+      )
+      const studentId = await t.run(async (ctx) =>
+        ctx.db.insert('students', {
+          studentCode: 'HS-Dup1',
+          fullName: 'Student Dup1',
+          isActive: true,
+          isDeleted: false,
+          createdAt: Date.now(),
+        }),
+      )
+
+      await t.run(async (ctx) => {
+        await ctx.db.insert('studentClasses', {
+          studentId,
+          classYearId,
+          isPrimaryClass: true,
+          enrolledDate: '2024-01-01',
+          status: 'active',
+          isDeleted: false,
+        })
+        // Old removed assignment (inserted first, so index/insertion order
+        // would return this row first if `.first()` were used).
+        await ctx.db.insert('classCatechists', {
+          catechistId: userId,
+          classYearId,
+          academicYearId: yearId,
+          role: 'co_teacher',
+          isDeleted: true,
+        })
+        // Re-added valid assignment for the same (catechistId, classYearId) key.
+        await ctx.db.insert('classCatechists', {
+          catechistId: userId,
+          classYearId,
+          academicYearId: yearId,
+          role: 'co_teacher',
+          isDeleted: false,
+        })
+      })
+
+      const allowed = await t.run(async (ctx) =>
+        checkEditStudentPermission(ctx, userId, studentId),
+      )
+      expect(allowed).toBe(true)
+    })
+
+    test('allows branch head when a soft-deleted branchAssignments row precedes a valid one for the same key', async () => {
+      const t = convexTest(schema, modules)
+      const userId = await t.run(async (ctx) =>
+        ctx.db.insert('catechists', {
+          memberId: 'C-Dup2',
+          fullName: 'Rehired Branch Head',
+          role: 'user',
+          isActive: true,
+          isDeleted: false,
+        }),
+      )
+      const yearId = await t.run(async (ctx) =>
+        ctx.db.insert('academicYears', {
+          name: '2024',
+          startDate: '2024-01-01',
+          endDate: '2024-12-31',
+          timezone: 'Asia/Ho_Chi_Minh',
+          isActive: true,
+          isDeleted: false,
+        }),
+      )
+      const branchId = await t.run(async (ctx) =>
+        ctx.db.insert('branches', {
+          name: 'B1',
+          isDeleted: false,
+          sortOrder: 1,
+        }),
+      )
+      const classId = await t.run(async (ctx) =>
+        ctx.db.insert('classes', {
+          name: 'Class 1',
+          branchId,
+          isDeleted: false,
+        }),
+      )
+      const classYearId = await t.run(async (ctx) =>
+        ctx.db.insert('classYears', {
+          classId,
+          academicYearId: yearId,
+          isDeleted: false,
+        }),
+      )
+      const studentId = await t.run(async (ctx) =>
+        ctx.db.insert('students', {
+          studentCode: 'HS-Dup2',
+          fullName: 'Student Dup2',
+          isActive: true,
+          isDeleted: false,
+          createdAt: Date.now(),
+        }),
+      )
+
+      await t.run(async (ctx) => {
+        await ctx.db.insert('studentClasses', {
+          studentId,
+          classYearId,
+          isPrimaryClass: true,
+          enrolledDate: '2024-01-01',
+          status: 'active',
+          isDeleted: false,
+        })
+        await ctx.db.insert('branchAssignments', {
+          catechistId: userId,
+          academicYearId: yearId,
+          branchId,
+          isDeleted: true,
+        })
+        await ctx.db.insert('branchAssignments', {
+          catechistId: userId,
+          academicYearId: yearId,
+          branchId,
+          isDeleted: false,
+        })
+      })
+
+      const allowed = await t.run(async (ctx) =>
+        checkEditStudentPermission(ctx, userId, studentId),
+      )
+      expect(allowed).toBe(true)
+    })
+
+    test('allows board member when a soft-deleted academicYearAssignments row precedes a valid one for the same key', async () => {
+      const t = convexTest(schema, modules)
+      const userId = await t.run(async (ctx) =>
+        ctx.db.insert('catechists', {
+          memberId: 'C-Dup3',
+          fullName: 'Rehired Board Member',
+          role: 'user',
+          isActive: true,
+          isDeleted: false,
+        }),
+      )
+      const yearId = await t.run(async (ctx) =>
+        ctx.db.insert('academicYears', {
+          name: '2024',
+          startDate: '2024-01-01',
+          endDate: '2024-12-31',
+          timezone: 'Asia/Ho_Chi_Minh',
+          isActive: true,
+          isDeleted: false,
+        }),
+      )
+      const studentId = await t.run(async (ctx) =>
+        ctx.db.insert('students', {
+          studentCode: 'HS-Dup3',
+          fullName: 'Student Dup3',
+          isActive: true,
+          isDeleted: false,
+          createdAt: Date.now(),
+        }),
+      )
+
+      await t.run(async (ctx) => {
+        await ctx.db.insert('academicYearAssignments', {
+          academicYearId: yearId,
+          catechistId: userId,
+          assignmentType: 'board_member',
+          isDeleted: true,
+        })
+        await ctx.db.insert('academicYearAssignments', {
+          academicYearId: yearId,
+          catechistId: userId,
+          assignmentType: 'board_member',
+          isDeleted: false,
+        })
+      })
+
+      const allowed = await t.run(async (ctx) =>
+        checkEditStudentPermission(ctx, userId, studentId),
+      )
+      expect(allowed).toBe(true)
+    })
+  })
+
+  describe('checkStudentSensitiveInfoPermission', () => {
+    test('allows class catechist when a soft-deleted classCatechists row precedes a valid one for the same key', async () => {
+      const t = convexTest(schema, modules)
+      const userId = await t.run(async (ctx) =>
+        ctx.db.insert('catechists', {
+          memberId: 'C-Dup4',
+          fullName: 'Rehired Teacher',
+          role: 'user',
+          isActive: true,
+          isDeleted: false,
+        }),
+      )
+      const yearId = await t.run(async (ctx) =>
+        ctx.db.insert('academicYears', {
+          name: '2024',
+          startDate: '2024-01-01',
+          endDate: '2024-12-31',
+          timezone: 'Asia/Ho_Chi_Minh',
+          isActive: true,
+          isDeleted: false,
+        }),
+      )
+      const branchId = await t.run(async (ctx) =>
+        ctx.db.insert('branches', {
+          name: 'B1',
+          isDeleted: false,
+          sortOrder: 1,
+        }),
+      )
+      const classId = await t.run(async (ctx) =>
+        ctx.db.insert('classes', {
+          name: 'Class 1',
+          branchId,
+          isDeleted: false,
+        }),
+      )
+      const classYearId = await t.run(async (ctx) =>
+        ctx.db.insert('classYears', {
+          classId,
+          academicYearId: yearId,
+          isDeleted: false,
+        }),
+      )
+      const studentId = await t.run(async (ctx) =>
+        ctx.db.insert('students', {
+          studentCode: 'HS-Dup4',
+          fullName: 'Student Dup4',
+          isActive: true,
+          isDeleted: false,
+          createdAt: Date.now(),
+        }),
+      )
+
+      await t.run(async (ctx) => {
+        await ctx.db.insert('studentClasses', {
+          studentId,
+          classYearId,
+          isPrimaryClass: true,
+          enrolledDate: '2024-01-01',
+          status: 'active',
+          isDeleted: false,
+        })
+        await ctx.db.insert('classCatechists', {
+          catechistId: userId,
+          classYearId,
+          academicYearId: yearId,
+          role: 'co_teacher',
+          isDeleted: true,
+        })
+        await ctx.db.insert('classCatechists', {
+          catechistId: userId,
+          classYearId,
+          academicYearId: yearId,
+          role: 'co_teacher',
+          isDeleted: false,
+        })
+      })
+
+      const allowed = await t.run(async (ctx) =>
+        checkStudentSensitiveInfoPermission(ctx, userId, studentId),
+      )
+      expect(allowed).toBe(true)
+    })
+
+    test('denies when only a soft-deleted classCatechists row exists', async () => {
+      const t = convexTest(schema, modules)
+      const userId = await t.run(async (ctx) =>
+        ctx.db.insert('catechists', {
+          memberId: 'C-Dup5',
+          fullName: 'Removed Teacher',
+          role: 'user',
+          isActive: true,
+          isDeleted: false,
+        }),
+      )
+      const yearId = await t.run(async (ctx) =>
+        ctx.db.insert('academicYears', {
+          name: '2024',
+          startDate: '2024-01-01',
+          endDate: '2024-12-31',
+          timezone: 'Asia/Ho_Chi_Minh',
+          isActive: true,
+          isDeleted: false,
+        }),
+      )
+      const branchId = await t.run(async (ctx) =>
+        ctx.db.insert('branches', {
+          name: 'B1',
+          isDeleted: false,
+          sortOrder: 1,
+        }),
+      )
+      const classId = await t.run(async (ctx) =>
+        ctx.db.insert('classes', {
+          name: 'Class 1',
+          branchId,
+          isDeleted: false,
+        }),
+      )
+      const classYearId = await t.run(async (ctx) =>
+        ctx.db.insert('classYears', {
+          classId,
+          academicYearId: yearId,
+          isDeleted: false,
+        }),
+      )
+      const studentId = await t.run(async (ctx) =>
+        ctx.db.insert('students', {
+          studentCode: 'HS-Dup5',
+          fullName: 'Student Dup5',
+          isActive: true,
+          isDeleted: false,
+          createdAt: Date.now(),
+        }),
+      )
+
+      await t.run(async (ctx) => {
+        await ctx.db.insert('studentClasses', {
+          studentId,
+          classYearId,
+          isPrimaryClass: true,
+          enrolledDate: '2024-01-01',
+          status: 'active',
+          isDeleted: false,
+        })
+        await ctx.db.insert('classCatechists', {
+          catechistId: userId,
+          classYearId,
+          academicYearId: yearId,
+          role: 'co_teacher',
+          isDeleted: true,
+        })
+      })
+
+      const allowed = await t.run(async (ctx) =>
+        checkStudentSensitiveInfoPermission(ctx, userId, studentId),
+      )
+      expect(allowed).toBe(false)
     })
   })
 

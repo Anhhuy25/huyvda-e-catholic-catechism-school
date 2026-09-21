@@ -44,6 +44,7 @@ const CODE_TO_I18N_KEY: Record<string, string> = {
   [STUDENT_ERRORS.IN_USE_BY_ENROLLMENT]: 'students.deleteActiveEnrollmentError',
   [STUDENT_ERRORS.ADDRESS_NOT_FOUND]: 'errors.studentAddressNotFound',
   [STUDENT_ERRORS.EXPORT_UNAUTHORIZED]: 'students.export.unauthorized',
+  [STUDENT_ERRORS.HAS_HISTORY]: 'students.permanentDeleteHasHistoryError',
 
   [CATECHIST_ERRORS.NOT_FOUND]: 'catechists.notFound',
   [CATECHIST_ERRORS.DUPLICATE_MEMBER_ID]: 'errors.catechistMemberIdDuplicate',
@@ -56,6 +57,9 @@ const CODE_TO_I18N_KEY: Record<string, string> = {
   [CATECHIST_ERRORS.OWN_CONTACT_ONLY]: 'errors.ownContactOnly',
   [CATECHIST_ERRORS.OWN_PROFILE_PHOTO_UPDATE_ONLY]: 'errors.ownPhotoUpdateOnly',
   [CATECHIST_ERRORS.OWN_PROFILE_PHOTO_DELETE_ONLY]: 'errors.ownPhotoDeleteOnly',
+  [CATECHIST_ERRORS.IN_USE_BY_ASSIGNMENT]:
+    'catechists.deleteActiveAssignmentError',
+  [CATECHIST_ERRORS.HAS_HISTORY]: 'catechists.permanentDeleteHasHistoryError',
 
   [GUARDIAN_ERRORS.NOT_FOUND]: 'errors.guardianNotFound',
   [GUARDIAN_ERRORS.CONTACT_NOT_FOUND]: 'errors.guardianContactNotFound',

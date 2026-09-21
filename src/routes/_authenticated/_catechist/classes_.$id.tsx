@@ -67,6 +67,7 @@ import {
 import { Skeleton } from '~/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
 import { EnrollmentDialog } from '~/components/forms/enrollment-dialog'
+import { CalendarEventDialog } from '~/components/forms/calendar-event-dialog'
 import { SendStudentsDialog } from '~/components/forms/send-students-dialog'
 import { BulkUpdateSacramentDialog } from '~/components/forms/bulk-update-sacrament-dialog'
 import { SacramentDetailDialog } from '~/components/forms/sacrament-detail-dialog'
@@ -122,6 +123,9 @@ function ClassDetailPage() {
   const [sacramentDetailDialogOpen, setSacramentDetailDialogOpen] =
     React.useState(false)
   const [printCardsDialogOpen, setPrintCardsDialogOpen] = React.useState(false)
+  const [createEventDialogOpen, setCreateEventDialogOpen] =
+    React.useState(false)
+  const [eventsRefreshKey, setEventsRefreshKey] = React.useState(0)
   const [removeTarget, setRemoveTarget] = React.useState<StudentRow | null>(
     null,
   )
@@ -186,6 +190,14 @@ function ClassDetailPage() {
     }
   }
 
+  const activeStudents = React.useMemo(
+    () =>
+      (classDetails?.students ?? []).filter(
+        (s) => s.enrollment.status !== 'withdrawn',
+      ),
+    [classDetails?.students],
+  )
+
   const canManage = classDetails?.canManageEnrollments ?? false
   const isPrimaryClass =
     (classDetails?.classYear?.classType ?? 'primary') === 'primary'
@@ -202,9 +214,8 @@ function ClassDetailPage() {
   )
 
   const exportRows = React.useMemo<Array<Record<string, CellValue>>>(() => {
-    if (!classDetails?.students) return []
     const result: Array<Record<string, CellValue>> = []
-    for (const s of classDetails.students) {
+    for (const s of activeStudents) {
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       if (!s.student) continue
       result.push({
@@ -247,11 +258,9 @@ function ClassDetailPage() {
           formatPersonName(a.catechist.saintName, a.catechist.fullName),
         )
         .join(', '),
-      [t('classes.export.totalStudentsLabel')]: String(
-        classDetails.studentCount,
-      ),
+      [t('classes.export.totalStudentsLabel')]: String(activeStudents.length),
     }
-  }, [classDetails, t])
+  }, [classDetails, activeStudents.length, t])
 
   const columns = React.useMemo<Array<TableColumnDef<StudentRow>>>(() => {
     const cols: Array<TableColumnDef<StudentRow>> = [
@@ -487,6 +496,20 @@ function ClassDetailPage() {
     )
   }
 
+  if (classDetails.classYear !== null && !canManage && !isAdmin(user)) {
+    return (
+      <div className="flex flex-col gap-6">
+        <PageHeader icon={GraduationCap} title={classDetails.class.name} />
+        <Alert variant="destructive">
+          <AlertCircle className="size-4 shrink-0" />
+          <AlertDescription>
+            {t('classes.detail.accessDenied')}
+          </AlertDescription>
+        </Alert>
+      </div>
+    )
+  }
+
   const year =
     selectedYearId && selectedYearId.length > 0
       ? selectedYearId.substring(0, 4)
@@ -615,23 +638,44 @@ function ClassDetailPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-4xl font-bold tabular-nums text-right">
-                  {classDetails.studentCount}
+                  {activeStudents.length}
                 </div>
               </CardContent>
             </Card>
 
-            <Card size="sm" className="col-span-2 lg:col-span-1">
+            <Card
+              key={eventsRefreshKey}
+              size="sm"
+              className="col-span-2 lg:col-span-1"
+            >
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <CalendarDays className="size-5 text-muted-foreground" />
                   {t('classes.detail.upcomingEvents.title')}
                 </CardTitle>
-                <Link
-                  to="/calendar-events"
-                  className={buttonVariants({ variant: 'outline', size: 'sm' })}
-                >
-                  {t('classes.detail.upcomingEvents.viewAll')}
-                </Link>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    disabled={isInactive}
+                    onClick={() => setCreateEventDialogOpen(true)}
+                    title={t('calendarEvents.manage.addEvent')}
+                  >
+                    <Plus className="size-4" />
+                    <span className="sr-only">
+                      {t('calendarEvents.manage.addEvent')}
+                    </span>
+                  </Button>
+                  <Link
+                    to="/calendar-events"
+                    className={buttonVariants({
+                      variant: 'outline',
+                      size: 'sm',
+                    })}
+                  >
+                    {t('classes.detail.upcomingEvents.viewAll')}
+                  </Link>
+                </div>
               </CardHeader>
               <CardContent>
                 {classEvents === undefined ? (
@@ -704,148 +748,158 @@ function ClassDetailPage() {
                   ? 'exams'
                   : 'students'
             }
-            className="w-full"
+            className="w-auto -mx-4 px-4 bg-card pb-4"
           >
-            <TabsList className="md:grid w-full grid-cols-3 overflow-hidden overflow-x-auto ring-2 ring-primary/50 shadow-xl bg-background">
+            <TabsList
+              variant="line"
+              className="md:grid w-auto grid-cols-3 overflow-hidden overflow-x-auto border-b-border py-0 bg-linear-to-b from-background to-foreground/5 -mx-4 px-4"
+            >
               <TabsTrigger
                 value="students"
-                className="data-active:bg-primary data-active:text-primary-foreground"
+                className="-mb-0.5 data-active:bg-card! data-active:shadow-md! bg-primary/10! data-active:text-primary border-0! rounded-b-none hover:bg-card px-4 h-full"
               >
                 {t('classes.detail.tabs.students')}
               </TabsTrigger>
               <TabsTrigger
                 value="attendance"
-                className="data-active:bg-primary data-active:text-primary-foreground"
+                className="-mb-0.5 data-active:bg-card! data-active:shadow-md! bg-primary/10! data-active:text-primary border-0! rounded-b-none hover:bg-card px-4 h-full"
               >
                 {t('classes.detail.tabs.attendance')}
               </TabsTrigger>
               <TabsTrigger
                 value="exams"
-                className="data-active:bg-primary data-active:text-primary-foreground"
+                className="-mb-0.5 data-active:bg-card! data-active:shadow-md! bg-primary/10! data-active:text-primary border-0! rounded-b-none hover:bg-card px-4 h-full"
               >
                 {t('classes.detail.tabs.exams')}
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="students" className="mt-6">
-              <div className="mb-4 flex flex-wrap justify-end gap-2">
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={
-                      <Button variant="outline">
-                        <Download className="size-4" />
-                        {t('classes.export.title')}
-                      </Button>
-                    }
-                  />
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      onClick={() =>
-                        exportCsv(
-                          exportRows,
-                          `${classDetails.class.name}-students.csv`,
-                          exportHeaders,
-                        )
-                      }
-                    >
-                      {t('classes.export.csv')}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => {
-                        if (!pdfMeta) return
-                        exportPdf(
-                          exportRows,
-                          classDetails.class.name,
-                          pdfMeta,
-                          `${classDetails.class.name}-students.pdf`,
-                          exportHeaders,
-                        )
-                      }}
-                    >
-                      {t('classes.export.pdf')}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                {isPrimaryClass && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={
-                        <Button variant="outline">
-                          <Printer className="size-4" />
-                          {t('printCards.buttonLabel')}
-                        </Button>
-                      }
-                    />
-                    <DropdownMenuContent align="end" className="min-w-fit">
-                      <DropdownMenuItem
-                        onClick={() => setPrintCardsDialogOpen(true)}
-                      >
-                        <Printer className="size-4" />
-                        {t('printCards.buttonLabel')}
-                      </DropdownMenuItem>
-                      {canManage && !isInactive && (
-                        <DropdownMenuItem
+            <TabsContent value="students" className="pt-6">
+              <Card className="border-0 ring-0 p-0 overflow-visible">
+                <CardHeader className="px-0">
+                  <div className="flex flex-wrap justify-end gap-2">
+                    {canManage && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
                           render={
-                            <Link
-                              to="/classes/$id/photobooth"
-                              params={{ id: id as string }}
-                            />
+                            <Button variant="outline">
+                              <Download className="size-4" />
+                              {t('classes.export.title')}
+                            </Button>
                           }
+                        />
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() =>
+                              exportCsv(
+                                exportRows,
+                                `${classDetails.class.name}-students.csv`,
+                                exportHeaders,
+                              )
+                            }
+                          >
+                            {t('classes.export.csv')}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              if (!pdfMeta) return
+                              exportPdf(
+                                exportRows,
+                                classDetails.class.name,
+                                pdfMeta,
+                                `${classDetails.class.name}-students.pdf`,
+                                exportHeaders,
+                              )
+                            }}
+                          >
+                            {t('classes.export.pdf')}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                    {isPrimaryClass && canManage && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <Button variant="outline">
+                              <Printer className="size-4" />
+                              {t('printCards.buttonLabel')}
+                            </Button>
+                          }
+                        />
+                        <DropdownMenuContent align="end" className="min-w-fit">
+                          <DropdownMenuItem
+                            onClick={() => setPrintCardsDialogOpen(true)}
+                          >
+                            <Printer className="size-4" />
+                            {t('printCards.buttonLabel')}
+                          </DropdownMenuItem>
+                          {!isInactive && (
+                            <DropdownMenuItem
+                              render={
+                                <Link
+                                  to="/classes/$id/photobooth"
+                                  params={{ id: id as string }}
+                                />
+                              }
+                            >
+                              <Camera className="size-4" />
+                              {t('photobooth.buttonLabel')}
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                    {isPrimaryClass && canManage && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <Button variant="outline">
+                              <FlameIcon />
+                              {t('classes.sacraments.buttonLabel')}
+                            </Button>
+                          }
+                        />
+                        <DropdownMenuContent
+                          align="end"
+                          className={'min-w-fit'}
                         >
-                          <Camera className="size-4" />
-                          {t('photobooth.buttonLabel')}
-                        </DropdownMenuItem>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-                {isPrimaryClass && canManage && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={
-                        <Button variant="outline">
-                          <FlameIcon />
-                          {t('classes.sacraments.buttonLabel')}
+                          <DropdownMenuItem
+                            onClick={() => setBulkUpdateDialogOpen(true)}
+                          >
+                            <CalendarIcon />
+                            {t('classes.sacraments.bulkUpdate.buttonLabel')}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => setSacramentDetailDialogOpen(true)}
+                          >
+                            <PencilIcon />
+                            {t('classes.sacraments.detail.buttonLabel')}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                    {canManage && !isInactive && (
+                      <>
+                        <Button
+                          variant="outline"
+                          onClick={() => setSendStudentsDialogOpen(true)}
+                        >
+                          <Send className="size-4" />
+                          {t('classes.sendStudents.buttonLabel')}
                         </Button>
-                      }
-                    />
-                    <DropdownMenuContent align="end" className={'min-w-fit'}>
-                      <DropdownMenuItem
-                        onClick={() => setBulkUpdateDialogOpen(true)}
-                      >
-                        <CalendarIcon />
-                        {t('classes.sacraments.bulkUpdate.buttonLabel')}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => setSacramentDetailDialogOpen(true)}
-                      >
-                        <PencilIcon />
-                        {t('classes.sacraments.detail.buttonLabel')}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-                {canManage && !isInactive && (
-                  <>
-                    <Button
-                      variant="outline"
-                      onClick={() => setSendStudentsDialogOpen(true)}
-                    >
-                      <Send className="size-4" />
-                      {t('classes.sendStudents.buttonLabel')}
-                    </Button>
-                    <Button onClick={() => setEnrollDialogOpen(true)}>
-                      <PlusIcon />
-                      {t('classes.enrollment.buttonLabel')}
-                    </Button>
-                  </>
-                )}
-              </div>
-              <Card>
+                        <Button onClick={() => setEnrollDialogOpen(true)}>
+                          <PlusIcon />
+                          {t('classes.enrollment.buttonLabel')}
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </CardHeader>
                 <CardContent>
                   <DataTable
                     columns={columns}
-                    data={classDetails.students}
+                    data={activeStudents}
                     searchColumnKey="student_fullName"
                     sorting={sortingState}
                     onSortingChange={setSortingState}
@@ -910,6 +964,7 @@ function ClassDetailPage() {
                       classId={id as Id<'classes'>}
                       academicYearId={selectedYearId}
                       requesterId={requesterId}
+                      canManage={canManage && !isInactive}
                     />
                   </TabsContent>
                 </Tabs>
@@ -921,6 +976,7 @@ function ClassDetailPage() {
             isOpen={enrollDialogOpen}
             onOpenChange={setEnrollDialogOpen}
             classYearId={classDetails.classYear._id}
+            classId={classDetails.classYear._id}
             className={classDetails.class.name}
             isPrimary={isPrimaryClass}
           />
@@ -965,6 +1021,22 @@ function ClassDetailPage() {
               }))}
             filename={`${classDetails.class.name}-cards.pdf`}
           />
+
+          {requesterId && selectedYearId && (
+            <CalendarEventDialog
+              isOpen={createEventDialogOpen}
+              onOpenChange={setCreateEventDialogOpen}
+              requesterId={requesterId}
+              academicYearId={selectedYearId}
+              defaults={{
+                scope: 'class',
+                classYearId: classDetails.classYear._id,
+              }}
+              onSuccess={() => {
+                setEventsRefreshKey((prev) => prev + 1)
+              }}
+            />
+          )}
 
           <AlertDialog
             open={removeTarget !== null}

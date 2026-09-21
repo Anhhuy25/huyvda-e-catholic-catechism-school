@@ -101,7 +101,11 @@ export function SendStudentsDialog({
   // Active students from the current source class
   const activeStudents = useMemo(() => {
     return students.filter(
-      (s) => s.student !== null && s.enrollment.status === 'active',
+      (s) =>
+        s.student !== null &&
+        s.student.isActive &&
+        !s.student.isDeleted &&
+        s.enrollment.status === 'active',
     )
   }, [students])
 

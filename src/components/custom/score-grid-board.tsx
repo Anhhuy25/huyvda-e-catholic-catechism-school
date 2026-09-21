@@ -1095,22 +1095,8 @@ export function ScoreGridBoard({
 
   return (
     <div className="flex w-full flex-col gap-4 min-w-0">
-      <div className="flex flex-wrap gap-2 items-center justify-end">
-        <Button variant="outline" size="sm" onClick={handleExportCsv}>
-          <Download className="h-4 w-4" />
-          <span>{t('classes.export.csv')}</span>
-        </Button>
-        {canManage && (
-          <Link to="/classes/$id/exams/create" params={{ id: classId }}>
-            <Button size="sm">
-              <Plus className="h-4 w-4" />
-              <span>{t('exams.grid.toolbar.createExam')}</span>
-            </Button>
-          </Link>
-        )}
-      </div>
-      <Card>
-        <CardHeader>
+      <Card className="border-0 ring-0 p-0 overflow-visible">
+        <CardHeader className="px-0">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-1 items-center gap-2 max-w-md">
               <Input
@@ -1147,9 +1133,25 @@ export function ScoreGridBoard({
                 </SelectContent>
               </Select>
             </div>
+            <div className="flex flex-wrap gap-2 items-center justify-end">
+              {canManage && (
+                <Button variant="outline" size="sm" onClick={handleExportCsv}>
+                  <Download className="h-4 w-4" />
+                  <span>{t('classes.export.csv')}</span>
+                </Button>
+              )}
+              {canManage && (
+                <Link to="/classes/$id/exams/create" params={{ id: classId }}>
+                  <Button size="sm">
+                    <Plus className="h-4 w-4" />
+                    <span>{t('exams.grid.toolbar.createExam')}</span>
+                  </Button>
+                </Link>
+              )}
+            </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-0">
           <div className="w-full rounded-lg border bg-card flex flex-col overflow-hidden max-h-[600px] relative">
             <div className="overflow-auto min-w-0 flex-1 scroll-fade">
               <table className="border-collapse w-full">

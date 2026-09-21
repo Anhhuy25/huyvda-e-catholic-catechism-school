@@ -10,7 +10,7 @@ import { DEFAULT_COUNTRY } from '~/lib/locale'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
 import { Checkbox } from '~/components/ui/checkbox'
-import { Field, FieldLabel } from '~/components/ui/field'
+import { Field, FieldError, FieldLabel } from '~/components/ui/field'
 import {
   Select,
   SelectContent,
@@ -88,7 +88,9 @@ export interface StudentFormValues {
   enrollmentDate: string
 }
 
-export function defaultStudentFormValues(): StudentFormValues {
+export function defaultStudentFormValues(
+  withDefaultGuardians = false,
+): StudentFormValues {
   const emptySacrament = (): StudentSacramentEntry => ({
     received: false,
     receivedDate: '',
@@ -96,6 +98,21 @@ export function defaultStudentFormValues(): StudentFormValues {
     feastName: '',
     sponsorName: '',
     notes: '',
+  })
+  const emptyGuardian = (
+    relationship: 'father' | 'mother',
+    contactPriority: number,
+  ): StudentGuardianEntry => ({
+    localId: crypto.randomUUID(),
+    guardianId: undefined,
+    fullName: '',
+    saintName: '',
+    relationship,
+    contactPriority,
+    notes: '',
+    phone: '',
+    email: '',
+    isLinked: false,
   })
   return {
     fullName: '',
@@ -119,7 +136,9 @@ export function defaultStudentFormValues(): StudentFormValues {
       first_communion: emptySacrament(),
       confirmation: emptySacrament(),
     },
-    guardians: [],
+    guardians: withDefaultGuardians
+      ? [emptyGuardian('father', 1), emptyGuardian('mother', 2)]
+      : [],
     enrollmentEnabled: false,
     enrollmentClassYearId: '',
     enrollmentDate: '',
@@ -185,14 +204,23 @@ function GuardianEntryRow({
 }) {
   const { t } = useTranslation()
 
-  const relationshipItems = [
-    { value: 'father', label: t('students.form.guardian.relationship.father') },
-    { value: 'mother', label: t('students.form.guardian.relationship.mother') },
-    {
-      value: 'guardian',
-      label: t('students.form.guardian.relationship.guardian'),
-    },
-  ]
+  const relationshipItems = React.useMemo(
+    () => [
+      {
+        value: 'father',
+        label: t('students.form.guardian.relationship.father'),
+      },
+      {
+        value: 'mother',
+        label: t('students.form.guardian.relationship.mother'),
+      },
+      {
+        value: 'guardian',
+        label: t('students.form.guardian.relationship.guardian'),
+      },
+    ],
+    [t],
+  )
 
   return (
     <div className="border rounded-lg p-4 flex flex-col gap-3 relative">
@@ -544,6 +572,7 @@ export interface StudentFormProps {
   values: StudentFormValues
   onChange: (values: StudentFormValues) => void
   requesterId: Id<'catechists'>
+  form: any
 }
 
 export function StudentForm({
@@ -551,6 +580,7 @@ export function StudentForm({
   values,
   onChange,
   requesterId,
+  form,
 }: StudentFormProps) {
   const { t } = useTranslation()
 
@@ -606,15 +636,21 @@ export function StudentForm({
     })
   }
 
-  const genderItems = [
-    { value: 'male', label: t('students.gender.male') },
-    { value: 'female', label: t('students.gender.female') },
-  ]
+  const genderItems = React.useMemo(
+    () => [
+      { value: 'male', label: t('students.gender.male') },
+      { value: 'female', label: t('students.gender.female') },
+    ],
+    [t],
+  )
 
-  const statusItems = [
-    { value: 'true', label: t('students.form.isActive.active') },
-    { value: 'false', label: t('students.form.isActive.inactive') },
-  ]
+  const statusItems = React.useMemo(
+    () => [
+      { value: 'true', label: t('students.form.isActive.active') },
+      { value: 'false', label: t('students.form.isActive.inactive') },
+    ],
+    [t],
+  )
 
   return (
     <div className="flex flex-col gap-6">
@@ -635,16 +671,30 @@ export function StudentForm({
                 onChange={(e) => setField('saintName', e.target.value)}
               />
             </Field>
-            <Field>
-              <FieldLabel>
-                {t('students.form.fullName')}{' '}
-                <span className="text-destructive">*</span>
-              </FieldLabel>
-              <Input
-                value={values.fullName}
-                onChange={(e) => setField('fullName', e.target.value)}
-              />
-            </Field>
+            <form.Field name="fullName">
+              {(field: any) => {
+                const isInvalid =
+                  field.state.meta.isTouched && !field.state.meta.isValid
+                return (
+                  <Field data-invalid={isInvalid}>
+                    <FieldLabel htmlFor="fullName">
+                      {t('students.form.fullName')}{' '}
+                      <span className="text-destructive">*</span>
+                    </FieldLabel>
+                    <Input
+                      id="fullName"
+                      value={values.fullName}
+                      onChange={(e) => setField('fullName', e.target.value)}
+                      onBlur={field.handleBlur}
+                      aria-invalid={isInvalid}
+                    />
+                    {isInvalid && (
+                      <FieldError errors={field.state.meta.errors} />
+                    )}
+                  </Field>
+                )
+              }}
+            </form.Field>
             <Field>
               <FieldLabel>{t('students.form.dateOfBirth')}</FieldLabel>
               <Input

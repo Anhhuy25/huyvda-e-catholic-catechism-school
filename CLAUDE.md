@@ -53,6 +53,7 @@ Convex agent skills for common tasks can be installed by running
 - **Writing to locked academic year** — mutations touching year-scoped entities must check `academic_year.is_active = true`. Don't skip because UI prevents it — enforce at mutation layer.
 - **Raw phone strings** — normalize with `parsePhoneNumber(value).format('E.164')` (`libphonenumber-js`) before writing.
 - **Zero-padding IDs in storage** — `member_id`/`student_code` stored as raw integers. Padding is display-only; don't pad before storing/lookup.
+- **`.first()` on a soft-delete table** — never call `.first()` on an index over a table with `isDeleted` (e.g. `classCatechists`, `branchAssignments`, `academicYearAssignments`). Reassignment mutations soft-delete the old row and insert a new one rather than patching, so a live key routinely has both a deleted and a non-deleted row — `.first()` returns insertion order, not "the active one", and can silently return the deleted row. Use `firstActive()` from `convex/lib/dbHelpers.ts` (`.collect()` + `.find(r => !r.isDeleted)`) instead.
 
 ### Testing Anti-Patterns
 

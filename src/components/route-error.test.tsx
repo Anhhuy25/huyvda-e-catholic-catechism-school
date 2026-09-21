@@ -41,67 +41,41 @@ describe('RouteError', () => {
   })
 
   test('renders the error message when present', () => {
-    render(
-      <RouteError
-        error={{ message: 'Boom', name: 'Error' } as any}
-        reset={vi.fn()}
-      />,
-    )
+    render(<RouteError error={new Error('Boom')} reset={vi.fn()} />)
     expect(screen.getByText('Boom')).toBeInTheDocument()
   })
 
   test('falls back to default text when error message is empty', () => {
-    render(
-      <RouteError
-        error={{ message: '', name: 'Error' } as any}
-        reset={vi.fn()}
-      />,
-    )
+    render(<RouteError error={new Error('')} reset={vi.fn()} />)
     expect(
       screen.getByText('Vui lòng thử lại hoặc quay về trang chủ.'),
     ).toBeInTheDocument()
   })
 
   test('reload button calls window.location.reload', () => {
-    render(
-      <RouteError
-        error={{ message: 'Boom', name: 'Error' } as any}
-        reset={vi.fn()}
-      />,
-    )
+    render(<RouteError error={new Error('Boom')} reset={vi.fn()} />)
     fireEvent.click(screen.getByRole('button', { name: /Thử lại/ }))
     expect(window.location.reload).toHaveBeenCalledTimes(1)
   })
 
   test('renders a link to the home page', () => {
-    render(
-      <RouteError
-        error={{ message: 'Boom', name: 'Error' } as any}
-        reset={vi.fn()}
-      />,
-    )
+    render(<RouteError error={new Error('Boom')} reset={vi.fn()} />)
     const link = screen.getByRole('button', { name: /Trang chủ/ })
     expect(link).toHaveAttribute('href', '/')
   })
 
   test('does not render the details toggle when there is no stack', () => {
-    render(
-      <RouteError
-        error={{ message: 'Boom', name: 'Error' } as any}
-        reset={vi.fn()}
-      />,
-    )
+    const error = new Error('Boom')
+    error.stack = ''
+    render(<RouteError error={error} reset={vi.fn()} />)
     expect(
       screen.queryByRole('button', { name: /Chi tiết lỗi/ }),
     ).not.toBeInTheDocument()
   })
 
   test('toggles the stack trace details when a stack is present', () => {
-    const error = {
-      message: 'Boom',
-      name: 'Error',
-      stack: 'Error: Boom at foo.ts:1:1',
-    } as any
+    const error = new Error('Boom')
+    error.stack = 'Error: Boom at foo.ts:1:1'
     render(<RouteError error={error} reset={vi.fn()} />)
 
     expect(screen.queryByText(error.stack)).not.toBeInTheDocument()

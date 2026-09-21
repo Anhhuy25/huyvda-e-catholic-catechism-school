@@ -684,4 +684,55 @@ describe('CalendarEventDialog', () => {
       expect(endDateInput.value).toBe('2024-12-30')
     })
   })
+
+  test('applies default scope and classYearId from defaults prop', () => {
+    render(
+      <CalendarEventDialog
+        isOpen
+        onOpenChange={mockOnOpenChange}
+        requesterId={requesterId}
+        academicYearId={academicYearId}
+        defaults={{
+          scope: 'class',
+          classYearId,
+        }}
+      />,
+    )
+
+    const selects = screen.getAllByTestId('mock-select')
+    const scopeSelect = selects[1]
+    const classSelect = selects[2]
+
+    expect(scopeSelect).toHaveValue('class')
+    expect(classSelect).toHaveValue(classYearId)
+  })
+
+  test('calls onSuccess callback when event is successfully created', async () => {
+    const mockOnSuccess = vi.fn()
+    render(
+      <CalendarEventDialog
+        isOpen
+        onOpenChange={mockOnOpenChange}
+        requesterId={requesterId}
+        academicYearId={academicYearId}
+        defaults={{
+          date: '2024-12-25',
+          scope: 'class',
+          classYearId,
+        }}
+        onSuccess={mockOnSuccess}
+      />,
+    )
+
+    const submitBtn = screen.getByRole('button', {
+      name: 'calendarEvents.dialog.create',
+    })
+    fireEvent.click(submitBtn)
+
+    await waitFor(() => {
+      expect(createMock).toHaveBeenCalled()
+      expect(mockOnSuccess).toHaveBeenCalled()
+      expect(mockOnOpenChange).toHaveBeenCalledWith(false)
+    })
+  })
 })

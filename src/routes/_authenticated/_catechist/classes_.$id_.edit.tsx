@@ -96,8 +96,12 @@ function EditClassPage() {
             createMutation={createClassMutation}
             updateMutation={updateClassMutation}
             updateClassYearMutation={updateClassYearMutation}
-            onSuccess={() => navigate({ to: '/classes' })}
-            onCancel={() => navigate({ to: '/classes' })}
+            onSuccess={() =>
+              navigate({ to: '/classes/$id', params: { id: cls._id } })
+            }
+            onCancel={() =>
+              navigate({ to: '/classes/$id', params: { id: cls._id } })
+            }
           />
         )}
       </div>

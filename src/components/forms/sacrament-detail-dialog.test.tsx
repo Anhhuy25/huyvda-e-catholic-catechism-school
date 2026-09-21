@@ -188,6 +188,46 @@ describe('SacramentDetailDialog', () => {
     expect(screen.getByText(/^2/)).toBeInTheDocument()
   })
 
+  test('filters out inactive and soft-deleted students', () => {
+    const inactiveStudent = makeStudent({
+      _id: 's3' as Id<'students'>,
+      studentCode: 'HS003',
+      fullName: 'Pham Van D',
+      saintName: 'Anna',
+      isActive: false,
+      isDeleted: false,
+    })
+    const deletedStudent = makeStudent({
+      _id: 's4' as Id<'students'>,
+      studentCode: 'HS004',
+      fullName: 'Hoang Van E',
+      saintName: 'Teresa',
+      isActive: true,
+      isDeleted: true,
+    })
+
+    const extraStudentsProp = [
+      ...studentsProp,
+      { student: inactiveStudent, sacramentDates: {} },
+      { student: deletedStudent, sacramentDates: {} },
+    ]
+
+    render(
+      <SacramentDetailDialog
+        isOpen={true}
+        onOpenChange={mockOnOpenChange}
+        students={extraStudentsProp}
+        requesterId={requesterId}
+        classYearId={classYearId}
+      />,
+    )
+
+    expect(screen.getByText(/Giuse Nguyen Van A/)).toBeInTheDocument()
+    expect(screen.getByText(/Maria Le Thi B/)).toBeInTheDocument()
+    expect(screen.queryByText(/Anna Pham Van D/)).toBeNull()
+    expect(screen.queryByText(/Teresa Hoang Van E/)).toBeNull()
+  })
+
   test('shows empty state when no students have sacrament data', () => {
     render(
       <SacramentDetailDialog

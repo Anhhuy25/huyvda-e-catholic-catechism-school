@@ -314,7 +314,7 @@ export const createProgram = mutation({
       throw new Error(EXTRACURRICULAR_ERRORS.INVALID_ENROLLMENT_DATE)
     }
 
-    const calendarEventId: any = await ctx.runMutation(
+    const calendarEventId = await ctx.runMutation(
       internal.calendarEvents.internalSyncProgramCalendarEvent,
       {
         academicYearId,

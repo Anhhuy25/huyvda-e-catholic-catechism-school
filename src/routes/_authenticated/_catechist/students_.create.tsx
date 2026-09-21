@@ -44,6 +44,14 @@ export const Route = createFileRoute(
   '/_authenticated/_catechist/students_/create',
 )({
   component: CreateStudentPage,
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { enrollClassId?: string } => ({
+    enrollClassId:
+      typeof search.enrollClassId === 'string'
+        ? search.enrollClassId
+        : undefined,
+  }),
   staticData: {
     crumbs: [
       { label: 'students.title', path: '/students' },
@@ -55,6 +63,7 @@ export const Route = createFileRoute(
 function CreateStudentPage() {
   const { user } = useAuth()
   const { t } = useTranslation()
+  const { enrollClassId } = Route.useSearch()
   const requesterId = user?.userDocId as Id<'catechists'> | undefined
 
   if (!requesterId) {
@@ -65,10 +74,21 @@ function CreateStudentPage() {
     )
   }
 
-  return <CreateStudentForm requesterId={requesterId} />
+  return (
+    <CreateStudentForm
+      requesterId={requesterId}
+      enrollClassId={enrollClassId as Id<'classYears'> | undefined}
+    />
+  )
 }
 
-function CreateStudentForm({ requesterId }: { requesterId: Id<'catechists'> }) {
+function CreateStudentForm({
+  requesterId,
+  enrollClassId,
+}: {
+  requesterId: Id<'catechists'>
+  enrollClassId?: Id<'classYears'>
+}) {
   const { t } = useTranslation()
   const navigate = useNavigate()
 
@@ -111,8 +131,18 @@ function CreateStudentForm({ requesterId }: { requesterId: Id<'catechists'> }) {
     [t],
   )
 
+  const initialFormValues = React.useMemo(() => {
+    const values = defaultStudentFormValues(true)
+    if (enrollClassId) {
+      values.enrollmentEnabled = true
+      values.enrollmentClassYearId = enrollClassId
+      values.enrollmentDate = new Date().toLocaleDateString('sv-SE')
+    }
+    return values
+  }, [enrollClassId])
+
   const form = useForm({
-    defaultValues: defaultStudentFormValues(),
+    defaultValues: initialFormValues,
     validators: {
       onSubmit: formSchema,
     },
@@ -133,28 +163,36 @@ function CreateStudentForm({ requesterId }: { requesterId: Id<'catechists'> }) {
             notes: entry.notes || undefined,
           }))
 
-        const guardians = value.guardians.map((g) => ({
-          guardianId:
-            g.isLinked && g.guardianId
-              ? (g.guardianId as Id<'guardians'>)
-              : undefined,
-          fullName: g.fullName,
-          saintName: g.saintName || undefined,
-          relationship: g.relationship,
-          contactPriority: g.contactPriority,
-          phone: g.phone || undefined,
-          email: g.email || undefined,
-          notes: g.notes || undefined,
-        }))
+        const guardians = value.guardians
+          .filter(
+            (g) =>
+              g.phone.trim() ||
+              g.email.trim() ||
+              g.saintName.trim() ||
+              g.fullName.trim(),
+          )
+          .map((g) => ({
+            guardianId:
+              g.isLinked && g.guardianId
+                ? (g.guardianId as Id<'guardians'>)
+                : undefined,
+            fullName: g.fullName,
+            saintName: g.saintName || undefined,
+            relationship: g.relationship,
+            contactPriority: g.contactPriority,
+            phone: g.phone || undefined,
+            email: g.email || undefined,
+            notes: g.notes || undefined,
+          }))
 
         const initialEnrollment =
-          value.enrollmentEnabled &&
-          value.enrollmentClassYearId &&
-          value.enrollmentDate
+          value.enrollmentEnabled && value.enrollmentClassYearId
             ? {
                 classYearId: value.enrollmentClassYearId as Id<'classYears'>,
                 isPrimaryClass: true,
-                enrolledDate: value.enrollmentDate,
+                enrolledDate:
+                  value.enrollmentDate ||
+                  new Date().toLocaleDateString('sv-SE'),
               }
             : undefined
 
@@ -240,6 +278,7 @@ function CreateStudentForm({ requesterId }: { requesterId: Id<'catechists'> }) {
           values={values}
           onChange={handleChange}
           requesterId={requesterId}
+          form={form}
         />
 
         <div className="flex justify-end gap-2">

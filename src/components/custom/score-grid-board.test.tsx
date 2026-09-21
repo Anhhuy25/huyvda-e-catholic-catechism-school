@@ -187,7 +187,7 @@ describe('ScoreGridBoard', () => {
   describe('CSV export', () => {
     test('exports name-sorted rows with per-column values formatted per scaleType', () => {
       mockQueries({ gridData: makeGridData() })
-      renderBoard()
+      renderBoard(true)
 
       fireEvent.click(screen.getByText('classes.export.csv'))
 

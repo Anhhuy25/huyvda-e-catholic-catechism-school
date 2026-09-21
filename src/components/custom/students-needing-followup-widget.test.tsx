@@ -27,6 +27,10 @@ const studentsFixture = [
     className: 'Ấu Nhi 1',
     attendanceRate: 40,
     scoreEntriesCount: 1,
+    totalExams: 3,
+    missedExamsCount: 2,
+    hasAttendanceIssue: true,
+    hasScoreIssue: true,
   },
   {
     studentClassId: 'sc2' as Id<'studentClasses'>,
@@ -35,6 +39,10 @@ const studentsFixture = [
     className: 'Thiếu Nhi 1',
     attendanceRate: 55,
     scoreEntriesCount: 2,
+    totalExams: 3,
+    missedExamsCount: 1,
+    hasAttendanceIssue: true,
+    hasScoreIssue: true,
   },
 ]
 
@@ -107,15 +115,23 @@ describe('StudentsNeedingFollowupWidget', () => {
         fullName: 'Lê Văn C',
         className: 'Nghĩa Sĩ 1',
         attendanceRate: 50,
-        scoreEntriesCount: 4, // >= 3, so no missingScores badge
+        scoreEntriesCount: 4,
+        totalExams: 4,
+        missedExamsCount: 0,
+        hasAttendanceIssue: true,
+        hasScoreIssue: false,
       },
       {
         studentClassId: 'sc4' as Id<'studentClasses'>,
         studentId: 'student4' as Id<'students'>,
         fullName: 'Phạm Thị D',
         className: 'Hiệp Sĩ 1',
-        attendanceRate: 85, // >= 75, so no lowAttendance badge
+        attendanceRate: 85,
         scoreEntriesCount: 1,
+        totalExams: 3,
+        missedExamsCount: 2,
+        hasAttendanceIssue: false,
+        hasScoreIssue: true,
       },
     ])
 

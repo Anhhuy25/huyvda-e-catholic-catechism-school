@@ -105,5 +105,3 @@ Nếu bạn muốn tham gia đóng góp hoặc chạy mã nguồn này tại má
 ### Admin
 
 ![Admin](docs/screenshots/admin-setup-support.png)
-# huyvda-e-catholic-catechism-school
-# huyvda-e-catholic-catechism-school

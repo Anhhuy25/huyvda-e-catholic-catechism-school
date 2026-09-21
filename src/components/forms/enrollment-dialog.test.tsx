@@ -123,6 +123,7 @@ describe('EnrollmentDialog', () => {
         isOpen={true}
         onOpenChange={mockOnOpenChange}
         classYearId={mockClassYearId}
+        classId={mockClassYearId}
         className={mockClassName}
       />,
     )
@@ -140,6 +141,7 @@ describe('EnrollmentDialog', () => {
         isOpen={true}
         onOpenChange={mockOnOpenChange}
         classYearId={mockClassYearId}
+        classId={mockClassYearId}
         className={mockClassName}
       />,
     )
@@ -153,6 +155,7 @@ describe('EnrollmentDialog', () => {
         isOpen={true}
         onOpenChange={mockOnOpenChange}
         classYearId={mockClassYearId}
+        classId={mockClassYearId}
         className={mockClassName}
       />,
     )
@@ -168,6 +171,7 @@ describe('EnrollmentDialog', () => {
         isOpen={true}
         onOpenChange={mockOnOpenChange}
         classYearId={mockClassYearId}
+        classId={mockClassYearId}
         className={mockClassName}
         defaultStudentIds={['student1' as Id<'students'>]}
       />,
@@ -191,6 +195,7 @@ describe('EnrollmentDialog', () => {
         isOpen={true}
         onOpenChange={mockOnOpenChange}
         classYearId={mockClassYearId}
+        classId={mockClassYearId}
         className={mockClassName}
       />,
     )
@@ -205,6 +210,7 @@ describe('EnrollmentDialog', () => {
         isOpen={true}
         onOpenChange={mockOnOpenChange}
         classYearId={mockClassYearId}
+        classId={mockClassYearId}
         className={mockClassName}
         defaultStudentIds={['student1' as Id<'students'>]}
       />,
@@ -228,6 +234,7 @@ describe('EnrollmentDialog', () => {
         isOpen={true}
         onOpenChange={mockOnOpenChange}
         classYearId={mockClassYearId}
+        classId={mockClassYearId}
         className={mockClassName}
       />,
     )
@@ -244,6 +251,7 @@ describe('EnrollmentDialog', () => {
         isOpen={true}
         onOpenChange={mockOnOpenChange}
         classYearId={mockClassYearId}
+        classId={mockClassYearId}
         className={mockClassName}
         defaultStudentIds={['student1' as Id<'students'>]}
       />,
@@ -266,6 +274,7 @@ describe('EnrollmentDialog', () => {
         isOpen={true}
         onOpenChange={mockOnOpenChange}
         classYearId={mockClassYearId}
+        classId={mockClassYearId}
         className={mockClassName}
         defaultStudentIds={['student1' as Id<'students'>]}
       />,
@@ -294,6 +303,7 @@ describe('EnrollmentDialog', () => {
         isOpen={true}
         onOpenChange={mockOnOpenChange}
         classYearId={mockClassYearId}
+        classId={mockClassYearId}
         className={mockClassName}
       />,
     )
@@ -317,6 +327,7 @@ describe('EnrollmentDialog', () => {
         isOpen={true}
         onOpenChange={mockOnOpenChange}
         classYearId={mockClassYearId}
+        classId={mockClassYearId}
         className={mockClassName}
       />,
     )
@@ -332,6 +343,7 @@ describe('EnrollmentDialog', () => {
         isOpen={true}
         onOpenChange={mockOnOpenChange}
         classYearId={mockClassYearId}
+        classId={mockClassYearId}
         className={mockClassName}
       />,
     )
@@ -345,6 +357,7 @@ describe('EnrollmentDialog', () => {
         isOpen={true}
         onOpenChange={mockOnOpenChange}
         classYearId={mockClassYearId}
+        classId={mockClassYearId}
         className={mockClassName}
       />,
     )
@@ -371,6 +384,7 @@ describe('EnrollmentDialog', () => {
         isOpen={true}
         onOpenChange={mockOnOpenChange}
         classYearId={mockClassYearId}
+        classId={mockClassYearId}
         className={mockClassName}
         defaultStudentIds={['student1' as Id<'students'>]}
         isPrimary={false}
@@ -395,6 +409,7 @@ describe('EnrollmentDialog', () => {
         isOpen={true}
         onOpenChange={mockOnOpenChange}
         classYearId={mockClassYearId}
+        classId={mockClassYearId}
         className={mockClassName}
       />,
     )
@@ -410,6 +425,7 @@ describe('EnrollmentDialog', () => {
         isOpen={true}
         onOpenChange={mockOnOpenChange}
         classYearId={mockClassYearId}
+        classId={mockClassYearId}
         className={mockClassName}
       />,
     )
@@ -430,6 +446,7 @@ describe('EnrollmentDialog', () => {
         isOpen={false}
         onOpenChange={mockOnOpenChange}
         classYearId={mockClassYearId}
+        classId={mockClassYearId}
         className={mockClassName}
       />,
     )
@@ -452,6 +469,7 @@ describe('EnrollmentDialog', () => {
         isOpen={true}
         onOpenChange={mockOnOpenChange}
         classYearId={mockClassYearId}
+        classId={mockClassYearId}
         className={mockClassName}
         defaultStudentIds={['student1' as Id<'students'>]}
       />,
@@ -472,6 +490,7 @@ describe('EnrollmentDialog', () => {
         isOpen={true}
         onOpenChange={mockOnOpenChange}
         classYearId={mockClassYearId}
+        classId={mockClassYearId}
         className={mockClassName}
         defaultStudentIds={['student1' as Id<'students'>]}
       />,
@@ -495,6 +514,7 @@ describe('EnrollmentDialog', () => {
         isOpen={true}
         onOpenChange={mockOnOpenChange}
         classYearId={mockClassYearId}
+        classId={mockClassYearId}
         className={mockClassName}
       />,
     )
@@ -556,6 +576,7 @@ describe('EnrollmentDialog', () => {
         isOpen={true}
         onOpenChange={mockOnOpenChange}
         classYearId={mockClassYearId}
+        classId={mockClassYearId}
         className={mockClassName}
       />,
     )
@@ -579,6 +600,7 @@ describe('EnrollmentDialog', () => {
         isOpen={false}
         onOpenChange={mockOnOpenChange}
         classYearId={mockClassYearId}
+        classId={mockClassYearId}
         className={mockClassName}
       />,
     )
@@ -598,6 +620,7 @@ describe('EnrollmentDialog', () => {
         isOpen={true}
         onOpenChange={mockOnOpenChange}
         classYearId={mockClassYearId}
+        classId={mockClassYearId}
         className={mockClassName}
       />,
     )
@@ -646,6 +669,7 @@ describe('EnrollmentDialog', () => {
         isOpen={true}
         onOpenChange={mockOnOpenChange}
         classYearId={mockClassYearId}
+        classId={mockClassYearId}
         className={mockClassName}
         defaultStudentIds={[
           'student1' as Id<'students'>,

@@ -59,11 +59,23 @@ export async function getStudentIdSetForClassYears(
     ),
   )
 
+  const candidateIds = new Set<Id<'students'>>()
   for (const enrollments of enrollmentsByClassYear) {
     for (const enrollment of enrollments) {
-      if (!enrollment.isDeleted) studentIds.add(enrollment.studentId)
+      if (!enrollment.isDeleted && enrollment.status !== 'withdrawn') {
+        candidateIds.add(enrollment.studentId)
+      }
     }
   }
+
+  await Promise.all(
+    Array.from(candidateIds).map(async (studentId) => {
+      const student = await ctx.db.get('students', studentId)
+      if (student && !student.isDeleted) {
+        studentIds.add(studentId)
+      }
+    }),
+  )
 
   return studentIds
 }

@@ -7,7 +7,17 @@ import {
 } from '@tanstack/react-router'
 import { useMutation, useQuery } from 'convex/react'
 import { useTranslation } from 'react-i18next'
-import { LogIn, Mail, MessageCircle, Pencil, Phone, Users } from 'lucide-react'
+import {
+  Check,
+  Copy,
+  LogIn,
+  Mail,
+  MessageCircle,
+  Pencil,
+  Phone,
+  Trash2,
+  Users,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
@@ -31,6 +41,19 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '~/components/ui/alert-dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '~/components/ui/dialog'
+import { Field, FieldLabel } from '~/components/ui/field'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from '~/components/ui/input-group'
 
 export const Route = createFileRoute(
   '/_authenticated/_catechist/catechists_/$id',
@@ -69,9 +92,12 @@ function CatechistDetailPage() {
   const canViewSensitive = canManage || isSelf
 
   const [loginAsOpen, setLoginAsOpen] = React.useState(false)
+  const [loginIdOpen, setLoginIdOpen] = React.useState(false)
   const [isLoggingIn, setIsLoggingIn] = React.useState(false)
+  const [confirmDelete, setConfirmDelete] = React.useState(false)
 
   const loginAsCatechist = useMutation(api.accountAdmin.loginAsCatechist)
+  const deleteMutation = useMutation(api.catechists.softDelete)
 
   const data = useQuery(
     api.catechists.get,
@@ -145,6 +171,19 @@ function CatechistDetailPage() {
     }
   }
 
+  const handleDelete = async () => {
+    if (!data || !requesterId) return
+    try {
+      await deleteMutation({ requesterId, catechistId: data._id })
+      toast.success(t('catechists.deleted'))
+      void navigate({ to: '/catechists' })
+    } catch (err) {
+      toast.error(translateConvexError(err, t, 'catechists.deleteError'))
+    } finally {
+      setConfirmDelete(false)
+    }
+  }
+
   const actions = canManage ? (
     <div className="flex items-center gap-2">
       {canLoginAs && (
@@ -166,6 +205,10 @@ function CatechistDetailPage() {
       >
         <Pencil className="mr-2 size-4" />
         {t('common.edit')}
+      </Button>
+      <Button variant="destructive" onClick={() => setConfirmDelete(true)}>
+        <Trash2 className="mr-2 size-4" />
+        {t('common.delete')}
       </Button>
     </div>
   ) : undefined
@@ -200,6 +243,15 @@ function CatechistDetailPage() {
                 <p className="text-sm text-muted-foreground">
                   {t('catechists.col.memberId')}: {data.memberId}
                 </p>
+                {canViewSensitive && data.account && (
+                  <Button
+                    variant="link"
+                    className="h-auto p-0 text-sm"
+                    onClick={() => setLoginIdOpen(true)}
+                  >
+                    {t('catechists.detail.viewLoginId')}
+                  </Button>
+                )}
               </div>
             </div>
           </CardContent>
@@ -495,6 +547,75 @@ function CatechistDetailPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AlertDialog
+        open={confirmDelete}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDelete(false)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('catechists.delete.title')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {data &&
+                t('catechists.delete.description', {
+                  name: formatPersonName(data.saintName, data.fullName),
+                })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {t('catechists.delete.confirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog open={loginIdOpen} onOpenChange={setLoginIdOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('catechists.detail.loginId.title')}</DialogTitle>
+          </DialogHeader>
+          {data?.account && <LoginIdField value={data.account.loginId} />}
+        </DialogContent>
+      </Dialog>
     </div>
+  )
+}
+
+function LoginIdField({ value }: { value: string }) {
+  const { t } = useTranslation()
+  const [copied, setCopied] = React.useState(false)
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(value)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  return (
+    <Field>
+      <FieldLabel>{t('catechists.detail.loginId.label')}</FieldLabel>
+      <InputGroup>
+        <InputGroupInput readOnly value={value} />
+        <InputGroupAddon align="inline-end">
+          <InputGroupButton
+            aria-label={t('common.copy')}
+            onClick={() => void handleCopy()}
+          >
+            {copied ? (
+              <Check className="size-3.5" />
+            ) : (
+              <Copy className="size-3.5" />
+            )}
+          </InputGroupButton>
+        </InputGroupAddon>
+      </InputGroup>
+    </Field>
   )
 }

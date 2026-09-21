@@ -18,6 +18,7 @@ import {
   isClassScopedSession,
 } from './lib/attendance'
 import { nextCounter } from './lib/counter'
+import { firstActive } from './lib/dbHelpers'
 import { ENROLLMENT_ERRORS, STUDENT_ERRORS } from './lib/errors'
 import { hashPassword } from './lib/password'
 import { getStudentLoginId } from './lib/accountPrefix'
@@ -61,6 +62,7 @@ export async function createStudentWithAccount(
     passwordHash: passwordHash ?? hashPassword(loginId),
     accountType: 'student',
     userRefId: studentId,
+    mustChangePassword: true,
     isActive: true,
     createdAt: Date.now(),
     isDeleted: false,
@@ -86,6 +88,7 @@ const studentFilterArgs = {
   name: v.optional(v.string()),
   gender: v.optional(v.union(v.literal('male'), v.literal('female'))),
   isActive: v.optional(v.boolean()),
+  isDeleted: v.optional(v.boolean()),
   // Class/branch filters are scoped to a single academic year: classYearId
   // already pins one, branchId needs academicYearId to disambiguate which
   // year's classes to match against.
@@ -175,6 +178,7 @@ async function filterAndSortStudents(
     name?: string
     gender?: 'male' | 'female'
     isActive?: boolean
+    isDeleted?: boolean
     classYearId?: Id<'classYears'>
     branchId?: Id<'branches'>
     academicYearId?: Id<'academicYears'>
@@ -192,7 +196,9 @@ async function filterAndSortStudents(
 
   const students = await ctx.db
     .query('students')
-    .withIndex('by_is_deleted', (q) => q.eq('isDeleted', false))
+    .withIndex('by_is_deleted', (q) =>
+      q.eq('isDeleted', args.isDeleted ?? false),
+    )
     .collect()
 
   const nameQuery = args.name?.trim().toLowerCase()
@@ -281,17 +287,15 @@ export const list = query({
     const activeYearId = await getActiveAcademicYear(ctx)
     let isBoardMemberForActiveYear = false
     if (activeYearId) {
-      const boardAssignment = await ctx.db
-        .query('academicYearAssignments')
-        .withIndex('by_academic_year_id_and_catechist_id', (q) =>
-          q
-            .eq('academicYearId', activeYearId)
-            .eq('catechistId', args.requesterId),
-        )
-        .first()
-      isBoardMemberForActiveYear = !!(
-        boardAssignment && !boardAssignment.isDeleted
-      )
+      isBoardMemberForActiveYear = !!(await firstActive(
+        ctx.db
+          .query('academicYearAssignments')
+          .withIndex('by_academic_year_id_and_catechist_id', (q) =>
+            q
+              .eq('academicYearId', activeYearId)
+              .eq('catechistId', args.requesterId),
+          ),
+      ))
     }
     const prefetchedPerms = {
       role: catechist.role,
@@ -433,6 +437,14 @@ export const exportList = query({
         }
       }),
     )
+  },
+})
+
+export const getMySidebarInfo = query({
+  args: { requesterId: v.id('students') },
+  handler: async (ctx, args) => {
+    const student = await assertValidStudent(ctx, args.requesterId)
+    return { saintName: student.saintName }
   },
 })
 
@@ -721,6 +733,103 @@ export const softDelete = mutation({
     }
 
     await ctx.db.patch('students', args.studentId, { isDeleted: true })
+
+    const account = await ctx.db
+      .query('accounts')
+      .withIndex('by_login_id', (q) =>
+        q.eq('loginId', getStudentLoginId(student.studentCode)),
+      )
+      .unique()
+    if (account && !account.isDeleted && account.isActive) {
+      await ctx.db.patch('accounts', account._id, { isActive: false })
+    }
+  },
+})
+
+export const restore = mutation({
+  args: {
+    requesterId: v.id('catechists'),
+    studentId: v.id('students'),
+  },
+  handler: async (ctx, args) => {
+    await assertAdminRole(ctx, args.requesterId)
+
+    const student = await ctx.db.get('students', args.studentId)
+    if (!student || !student.isDeleted) {
+      throw new Error(STUDENT_ERRORS.NOT_FOUND)
+    }
+
+    await ctx.db.patch('students', args.studentId, { isDeleted: false })
+
+    const account = await ctx.db
+      .query('accounts')
+      .withIndex('by_login_id', (q) =>
+        q.eq('loginId', getStudentLoginId(student.studentCode)),
+      )
+      .unique()
+    if (account && !account.isDeleted && !account.isActive) {
+      await ctx.db.patch('accounts', account._id, { isActive: true })
+    }
+  },
+})
+
+export const permanentDelete = mutation({
+  args: {
+    requesterId: v.id('catechists'),
+    studentId: v.id('students'),
+  },
+  handler: async (ctx, args) => {
+    await assertAdminRole(ctx, args.requesterId)
+
+    const student = await ctx.db.get('students', args.studentId)
+    if (!student || !student.isDeleted) {
+      throw new Error(STUDENT_ERRORS.NOT_FOUND)
+    }
+
+    const studentClasses = await ctx.db
+      .query('studentClasses')
+      .withIndex('by_student_id', (q) => q.eq('studentId', args.studentId))
+      .first()
+
+    if (studentClasses !== null) {
+      throw new Error(STUDENT_ERRORS.HAS_HISTORY)
+    }
+
+    const addresses = await ctx.db
+      .query('studentAddresses')
+      .withIndex('by_student_id', (q) => q.eq('studentId', args.studentId))
+      .collect()
+    for (const addr of addresses) {
+      await ctx.db.delete('studentAddresses', addr._id)
+    }
+
+    const guardians = await ctx.db
+      .query('studentGuardians')
+      .withIndex('by_student_id', (q) => q.eq('studentId', args.studentId))
+      .collect()
+    for (const sg of guardians) {
+      await ctx.db.delete('studentGuardians', sg._id)
+    }
+
+    const sacraments = await ctx.db
+      .query('studentSacraments')
+      .withIndex('by_student_id', (q) => q.eq('studentId', args.studentId))
+      .collect()
+    for (const sac of sacraments) {
+      await ctx.db.delete('studentSacraments', sac._id)
+    }
+
+    const account = await ctx.db
+      .query('accounts')
+      .withIndex('by_login_id', (q) =>
+        q.eq('loginId', getStudentLoginId(student.studentCode)),
+      )
+      .unique()
+    if (account) {
+      await ctx.db.delete('accounts', account._id)
+    }
+
+    await ctx.db.delete('students', args.studentId)
   },
 })
 
@@ -1955,6 +2064,23 @@ export const getEligibleForTransfer = query({
           const student = await ctx.db.get('students', enrollment.studentId)
           if (!student || student.isDeleted) return null
 
+          const annualResultRecord = await ctx.db
+            .query('annualResults')
+            .withIndex('by_student_class_id', (q) =>
+              q.eq('studentClassId', enrollment._id),
+            )
+            .first()
+
+          const annualResult =
+            annualResultRecord && !annualResultRecord.isDeleted
+              ? {
+                  _id: annualResultRecord._id,
+                  conductGrade: annualResultRecord.conductGrade,
+                  remark: annualResultRecord.remark,
+                  isCompleted: annualResultRecord.isCompleted,
+                }
+              : null
+
           return {
             studentClassId: enrollment._id,
             studentId: student._id,
@@ -1963,6 +2089,7 @@ export const getEligibleForTransfer = query({
             saintName: student.saintName,
             gender: student.gender,
             alreadyEnrolledInTargetYear: conflictedStudentIds.has(student._id),
+            annualResult,
           }
         }),
       )

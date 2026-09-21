@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { StudentDetailCards } from './student-detail-cards'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { formatDate } from '~/lib/locale'
@@ -482,6 +482,11 @@ describe('StudentDetailCards', () => {
       })
       render(<StudentDetailCards data={data as any} requester={requester} />)
 
+      const enrollmentsTab = screen.getByRole('tab', {
+        name: 'students.detail.tabs.enrollments',
+      })
+      fireEvent.click(enrollmentsTab)
+
       const items = screen.getAllByRole('listitem')
       const classNames = items.map((li) => li.textContent || '')
       const newIndex = classNames.findIndex((t) => t.includes('New Class'))
@@ -511,6 +516,46 @@ describe('StudentDetailCards', () => {
 
       const badge = screen.getByText('students.status.on_leave')
       expect(badge).toHaveAttribute('data-variant', 'secondary')
+    })
+  })
+
+  describe('tabs layout and navigation', () => {
+    test('renders tabs in exact order: personal info | guardians | sacraments | enrollment history', () => {
+      const data = makeData()
+      render(<StudentDetailCards data={data as any} requester={requester} />)
+
+      const tabs = screen.getAllByRole('tab')
+      expect(tabs).toHaveLength(4)
+      expect(tabs[0]).toHaveTextContent('students.detail.tabs.personal')
+      expect(tabs[1]).toHaveTextContent('students.detail.tabs.guardians')
+      expect(tabs[2]).toHaveTextContent('students.detail.tabs.sacraments')
+      expect(tabs[3]).toHaveTextContent('students.detail.tabs.enrollments')
+    })
+
+    test('defaults to personal info tab and allows switching tabs', () => {
+      const data = makeData()
+      render(<StudentDetailCards data={data as any} requester={requester} />)
+
+      const tabs = screen.getAllByRole('tab')
+      expect(tabs[0]).toHaveAttribute('data-active', '')
+      expect(screen.getByText('students.detail.personal.title')).toBeVisible()
+
+      // Switch to guardians tab
+      fireEvent.click(tabs[1])
+      expect(tabs[1]).toHaveAttribute('data-active', '')
+      expect(screen.getByText('students.detail.guardians.title')).toBeVisible()
+
+      // Switch to sacraments tab
+      fireEvent.click(tabs[2])
+      expect(tabs[2]).toHaveAttribute('data-active', '')
+      expect(screen.getByText('students.detail.sacraments.title')).toBeVisible()
+
+      // Switch to enrollment history tab
+      fireEvent.click(tabs[3])
+      expect(tabs[3]).toHaveAttribute('data-active', '')
+      expect(
+        screen.getByText('students.detail.enrollments.title'),
+      ).toBeVisible()
     })
   })
 })

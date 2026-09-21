@@ -27,6 +27,7 @@ node_modules
 app.config.timestamp_*.js
 .venv
 /coverage/
+/convex/coverage/
 .superpowers/
 
 # design-sync

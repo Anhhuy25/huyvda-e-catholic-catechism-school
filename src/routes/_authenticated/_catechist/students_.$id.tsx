@@ -1,18 +1,35 @@
-import { Link, createFileRoute, useParams } from '@tanstack/react-router'
-import { useQuery } from 'convex/react'
+import {
+  Link,
+  createFileRoute,
+  useNavigate,
+  useParams,
+} from '@tanstack/react-router'
+import { useMutation, useQuery } from 'convex/react'
 import { useTranslation } from 'react-i18next'
-import { CalendarCheck, Pencil, Printer, Users } from 'lucide-react'
+import { CalendarCheck, Pencil, Printer, Trash2, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import QRCode from 'qrcode'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { useAuth } from '~/lib/auth'
 import { isAdmin } from '~/lib/permissions'
+import { translateConvexError } from '~/lib/convex-errors'
 import { PageHeader } from '~/components/page-header'
 import { Card, CardContent, CardFooter } from '~/components/ui/card'
 import { Button } from '~/components/ui/button'
 import { Switch } from '~/components/ui/switch'
 import { Label } from '~/components/ui/label'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '~/components/ui/alert-dialog'
 import { StudentDetailCards } from '~/components/custom/student-detail-cards'
 import { formatPersonName } from '~/lib/name'
 import { ProfileAvatar } from '~/components/custom/profile-avatar'
@@ -34,15 +51,34 @@ function StudentDetailPage() {
   const { id } = useParams({ strict: false })
   const { t } = useTranslation()
   const { user } = useAuth()
+  const navigate = useNavigate()
   const requesterId = user?.userDocId as Id<'catechists'> | undefined
-  const canManage = isAdmin(user)
 
   const data = useQuery(
     api.students.getStudentDetail,
     requesterId ? { requesterId, studentId: id as Id<'students'> } : 'skip',
   )
 
+  const canManage = data?.isEditable ?? false
+  const canDelete = isAdmin(user)
+
   const appConfig = useQuery(api.appConfig.get)
+
+  const deleteMutation = useMutation(api.students.softDelete)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
+  const handleDelete = async () => {
+    if (!data || !requesterId) return
+    try {
+      await deleteMutation({ requesterId, studentId: data._id })
+      toast.success(t('students.deleted'))
+      navigate({ to: '/students' })
+    } catch (err) {
+      toast.error(translateConvexError(err, t, 'students.deleteError'))
+    } finally {
+      setConfirmDelete(false)
+    }
+  }
 
   const [showQrCode, setShowQrCode] = useState(false)
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null)
@@ -114,6 +150,12 @@ function StudentDetailPage() {
           {t('common.edit')}
         </Button>
       )}
+      {canDelete && (
+        <Button variant="destructive" onClick={() => setConfirmDelete(true)}>
+          <Trash2 className="mr-2 size-4" />
+          {t('common.delete')}
+        </Button>
+      )}
     </>
   )
 
@@ -181,6 +223,35 @@ function StudentDetailPage() {
           requesterId ? { accountType: 'catechist', requesterId } : undefined
         }
       />
+
+      <AlertDialog
+        open={confirmDelete}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDelete(false)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('students.delete.title')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('students.delete.description', {
+                name: data
+                  ? formatPersonName(data.saintName, data.fullName)
+                  : '',
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {t('students.delete.confirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
